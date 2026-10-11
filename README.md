@@ -2,6 +2,8 @@
 
 面向内部团队与 Agent 的产品视频制作工作台。Next.js 是唯一业务入口，FastAPI + LangGraph 执行内置创作助手，BullMQ Worker 处理媒体生成和转存。
 
+生产入口：[aivideo.sligenai.cn](https://aivideo.sligenai.cn) · [Agent Skill](https://aivideo.sligenai.cn/skills/ai-video-platform/SKILL.md) · [OpenAPI](https://aivideo.sligenai.cn/api/v1/openapi.json)。业务操作需要管理员分配的登录账号或平台 API Key。
+
 ## 运行
 
 需要 Node.js 22+、Python 3.10+、PostgreSQL 16、Redis 7、ffmpeg/ffprobe，以及可访问的阿里云 OSS。推荐生产环境使用 [部署说明](docs/deployment.md) 中的 Docker Compose。
