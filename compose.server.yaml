@@ -1,0 +1,24 @@
+# Existing Nginx owns ports 80/443. Start only: web worker agent.
+services:
+  web:
+    image: ai-video-platform-app:${RELEASE_TAG:-latest}
+    build:
+      args:
+        DEBIAN_MIRROR: mirrors.aliyun.com
+    ports: ["127.0.0.1:${WEB_PORT:-3210}:3000"]
+    mem_limit: 1g
+  migrate:
+    image: ai-video-platform-app:${RELEASE_TAG:-latest}
+  worker:
+    image: ai-video-platform-app:${RELEASE_TAG:-latest}
+    mem_limit: 768m
+  agent:
+    image: ai-video-platform-agent:${RELEASE_TAG:-latest}
+    mem_limit: 512m
+  postgres:
+    mem_limit: 512m
+  redis:
+    image: redis:7.4.6-alpine
+    mem_limit: 256m
+  proxy:
+    profiles: [standalone-proxy]

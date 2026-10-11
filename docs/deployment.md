@@ -10,7 +10,31 @@
 
 Compose 会等待 PostgreSQL 就绪，先应用迁移和 seed，再启动网站、Worker、Agent 与 Caddy。Caddy 自动申请 HTTPS。数据库、Redis、FastAPI 不发布到公网；内部业务服务路由被公网反向代理拒绝。
 
-当前交付包含部署配置；没有在未知远程主机上实际部署。首次上线需在目标 Linux 环境运行以上检查。
+### 与现有 Nginx 共用服务器
+
+目标站点为 `https://aivideo.sligenai.cn`，服务器 `118.178.137.15`，目录 `/opt/ai-video-platform`。使用独立 Compose 项目 `ai-video-platform`，生产库从空库初始化，不导入本地验收数据。
+
+```sh
+docker compose -f compose.yaml -f compose.server.yaml config --quiet
+docker compose -f compose.yaml -f compose.server.yaml build web
+docker compose -f compose.yaml -f compose.server.yaml build agent
+docker compose -f compose.yaml -f compose.server.yaml up -d --no-build web worker agent
+```
+
+`web`、`worker`、`migrate` 共用 `ai-video-platform-app:${RELEASE_TAG}` 镜像；部署前设置唯一 `RELEASE_TAG`。覆盖文件只将网站发布到 `127.0.0.1:3210`，不启动 Caddy，数据库、Redis 和 Agent 仅容器网络可达。内存上限分别为网站 1 GiB、Worker 768 MiB、Agent/数据库各 512 MiB、Redis 256 MiB。生产媒体并发初始设为 2。
+
+服务器覆盖文件为网站镜像设置阿里云 Debian 镜像源，仅影响本项目构建；默认 Dockerfile 仍使用 Debian 官方源。镜像导出后同一标签供 Worker 与迁移复用，不需要重复构建。
+
+首次申请证书时，先为该域名配置仅 HTTP 的 ACME webroot `/var/www/aivideo-acme`，再运行 Certbot：
+
+```sh
+certbot certonly --non-interactive --agree-tos --register-unsafely-without-email \
+  --webroot -w /var/www/aivideo-acme -d aivideo.sligenai.cn
+```
+
+取得证书后将 `deploy/nginx.conf` 安装为 `/etc/nginx/conf.d/aivideo.sligenai.cn.conf`，执行 `nginx -t && systemctl reload nginx`。保留 HTTP challenge 路径，其他 HTTP 请求跳转 HTTPS。系统 `certbot.timer` 负责续期，为本域名安装独立 deploy hook，在续期后校验并 reload Nginx；不要覆盖其他站点的配置或续期钩子。
+
+日常状态使用上面的两个 `-f` 参数执行 `ps` 和 `logs --tail=100 migrate web worker agent`。更新前备份数据库与当前镜像标签；若涉及数据库迁移，应确认旧代码兼容后才能回退镜像，不能仅凭应用回退假定数据库已恢复。`.env` 仅留服务器私有配置，权限为 `600`；管理员凭据由部署者单独交付，不写入仓库。
 
 ## OSS
 
@@ -30,7 +54,7 @@ docker compose exec -T postgres pg_dump -U aivideo -d aivideo -Fc > backups/aivi
 
 此备份包含业务 schema 和 `agent_checkpoints`。另外在独立、受控的密钥库备份 `.env` 中加密主密钥与连接配置；丢失主密钥将无法解密平台 API Key 和模型凭据。不要把 `.env` 与数据库包公开放在一起。OSS 正式文件长期保留，数据库备份只保存对象 Key 和内容哈希，不包含媒体二进制。
 
-建议每日备份、至少保留 30 天，并按业务要求复制到另一故障域。使用系统调度器调用项目中的 `scripts/backup.sh`；脚本本身不会安装定时任务。
+服务器已通过 `/etc/cron.d/ai-video-platform` 设置每日 03:40（服务器时区）调用 `scripts/backup.sh`，备份写入 `/opt/ai-video-platform/backups`，目录权限 `700`、备份权限 `600`。脚本使用临时文件加原子重命名，仅在 pg_dump 成功后发布备份。当前不自动删除备份；建议至少保留 30 天，并按业务要求复制到另一故障域。脚本本身不会安装定时任务。
 
 ## 恢复演练
 
