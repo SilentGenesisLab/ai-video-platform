@@ -84,7 +84,10 @@ async function handle(
         "登录需要同源请求",
       );
       const data = z
-        .object({ email: z.email(), password: z.string().max(200) })
+        .object({
+          email: z.string().trim().toLowerCase().pipe(z.email()),
+          password: z.string().max(200),
+        })
         .parse(body);
       const attempts = await db.auditEvent.count({
         where: {

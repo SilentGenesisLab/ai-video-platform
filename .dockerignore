@@ -10,3 +10,11 @@ node_modules
 __pycache__
 test-results
 playwright-report
+backups
+*.dump
+*.partial
+*.log
+*.exit
+RELEASE_*
+deploy-build.sh
+.pytest_cache

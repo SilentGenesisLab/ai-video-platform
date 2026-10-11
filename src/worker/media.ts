@@ -148,19 +148,23 @@ export async function parseFile(fileId: string) {
         where: { id: fileId },
         data: { metadata: json(metadata) },
       });
-      const channel = await db.channel.findFirst({
-        where: { provider: "aicentre", enabled: true },
-      });
-      if (!channel) throw new Error("转写渠道未配置");
-      const speech = await providerRequest(
-        channel.id,
-        "/v1/asr/transcriptions",
-        {
-          file_url: oss().signatureUrl(file.key, { expires: 7200 }),
-          language: "auto",
-        },
-      );
-      text = speech.text ?? "";
+      if (
+        (metadata.streams as { type: string }[]).some((s) => s.type === "audio")
+      ) {
+        const channel = await db.channel.findFirst({
+          where: { provider: "aicentre", enabled: true },
+        });
+        if (!channel) throw new Error("转写渠道未配置");
+        const speech = await providerRequest(
+          channel.id,
+          "/v1/asr/transcriptions",
+          {
+            file_url: oss().signatureUrl(file.key, { expires: 7200 }),
+            language: "auto",
+          },
+        );
+        text = speech.text ?? "";
+      }
     }
     await db.fileObject.update({
       where: { id: fileId },

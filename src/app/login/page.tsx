@@ -1,9 +1,16 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, Clapperboard, LoaderCircle } from "lucide-react";
 export default function Login() {
   const [error, setError] = useState(""),
-    [loading, setLoading] = useState(false);
+    [loading, setLoading] = useState(false),
+    [showPassword, setShowPassword] = useState(false),
+    [local, setLocal] = useState(false);
+  useEffect(() => {
+    setLocal(
+      ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname),
+    );
+  }, []);
   async function login(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
@@ -14,15 +21,24 @@ export default function Login() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: data.get("email"),
+          email: String(data.get("email") ?? "").trim(),
           password: data.get("password"),
         }),
+        signal: AbortSignal.timeout(20000),
       });
-      const b = await r.json();
-      if (!r.ok) throw new Error(b.error?.message);
+      const b = await r.json().catch(() => {
+        throw new Error("登录服务暂时不可用，请稍后重试");
+      });
+      if (!r.ok) throw new Error(b.error?.message || "登录失败，请稍后重试");
       window.location.href = "/studio/products";
     } catch (e) {
-      setError((e as Error).message);
+      setError(
+        (e as Error).name === "TimeoutError"
+          ? "登录请求超时，请检查网络后重试"
+          : (e as Error).message === "Failed to fetch"
+            ? "无法连接登录服务，请检查网络后重试"
+            : (e as Error).message,
+      );
     } finally {
       setLoading(false);
     }
@@ -60,6 +76,13 @@ export default function Login() {
         <span className="eyebrow">WELCOME BACK</span>
         <h2>进入创作空间</h2>
         <p className="muted">使用团队账号登录，继续你的制作。</p>
+        {local && (
+          <p className="notice">
+            当前为本地测试环境，账号与线上独立。
+            <br />
+            <a href="https://aivideo.sligenai.cn/login">前往线上工作台</a>
+          </p>
+        )}
         <form onSubmit={login}>
           <label>
             邮箱
@@ -75,12 +98,20 @@ export default function Login() {
             密码
             <input
               name="password"
-              type="password"
+              type={showPassword ? "text" : "password"}
               autoComplete="current-password"
               required
               placeholder="输入账号密码"
             />
           </label>
+          <button
+            type="button"
+            className="button"
+            aria-pressed={showPassword}
+            onClick={() => setShowPassword(!showPassword)}
+          >
+            {showPassword ? "隐藏密码" : "显示密码"}
+          </button>
           {error && (
             <p role="alert" className="error">
               {error}

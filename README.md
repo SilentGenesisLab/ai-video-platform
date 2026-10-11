@@ -99,4 +99,4 @@ npm run build
 
 集成测试需要已启动的网站与数据库，会创建带“验收/测试”名称的记录。恢复测试的模型渠道为不可访问的测试域名，在审批前停用，不调用付费模型。`scripts/live-smoke.ts` 是显式的真实接口验收脚本，会产生图片与音乐费用；视频始终先进入待审批。不要当作常规 CI 执行。
 
-当前实测结果与限制见 [验收记录](docs/acceptance.md)，故障处理与备份见 [运维说明](docs/deployment.md)。
+浏览器场景、预期结果和生产测试方式见 [测试用例](docs/test-cases.md)。当前实测结果与限制见 [验收记录](docs/acceptance.md)，故障处理与备份见 [运维说明](docs/deployment.md)。
