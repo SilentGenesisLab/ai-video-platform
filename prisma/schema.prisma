@@ -1,0 +1,211 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model User {
+  id String @id @default(uuid())
+  email String @unique
+  name String
+  passwordHash String
+  role String @default("editor")
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  sessions Session[]
+  keys ApiKey[]
+}
+model Session {
+  id String @id @default(uuid())
+  hash String @unique
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+}
+model ApiKey {
+  id String @id @default(uuid())
+  name String
+  note String @default("")
+  prefix String
+  hash String @unique
+  ciphertext String
+  ownerId String
+  owner User @relation(fields: [ownerId], references: [id])
+  scopes String[]
+  productIds String[]
+  enabled Boolean @default(true)
+  expiresAt DateTime?
+  revokedAt DateTime?
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model Resource {
+  id String @id @default(uuid())
+  kind String
+  title String
+  productId String?
+  planId String?
+  parentId String?
+  uniqueSlot String? @unique
+  status String @default("draft")
+  version Int @default(1)
+  content Json
+  createdBy String
+  updatedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  revisions Revision[]
+  @@index([kind, productId, planId])
+}
+model Revision {
+  id String @id @default(uuid())
+  resourceId String
+  resource Resource @relation(fields: [resourceId], references: [id])
+  version Int
+  title String
+  status String
+  content Json
+  sources Json
+  actorId String
+  actorType String
+  createdAt DateTime @default(now())
+  @@unique([resourceId, version])
+}
+model Channel {
+  id String @id @default(uuid())
+  name String
+  provider String
+  baseUrl String
+  ciphertext String
+  enabled Boolean @default(true)
+  concurrency Int @default(3)
+  models Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model ProductionBatch {
+  id String @id @default(uuid())
+  title String
+  productId String
+  planId String?
+  kind String
+  version Int @default(1)
+  snapshot Json
+  digest String
+  status String
+  createdBy String
+  approvedBy String?
+  approvedAt DateTime?
+  approvedDigest String?
+  createdAt DateTime @default(now())
+  jobs Job[]
+}
+model Job {
+  id String @id @default(uuid())
+  batchId String?
+  batch ProductionBatch? @relation(fields: [batchId], references: [id])
+  productId String
+  planId String?
+  kind String
+  status String @default("queued")
+  phase String @default("submit")
+  channelId String?
+  input Json
+  upstreamId String?
+  providerPath String?
+  actualChannel String?
+  result Json?
+  error String?
+  cancelRequested Boolean @default(false)
+  leaseUntil DateTime?
+  leaseOwner String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, updatedAt])
+}
+model Outbox {
+  id String @id @default(uuid())
+  jobId String
+  phase String
+  availableAt DateTime @default(now())
+  deliveredAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([deliveredAt, availableAt])
+}
+model FileObject {
+  id String @id @default(uuid())
+  productId String
+  name String
+  key String @unique
+  mime String
+  bytes Int
+  sha256 String?
+  status String @default("pending")
+  parseStatus String @default("pending")
+  extractedText String?
+  parseError String?
+  metadata Json?
+  createdBy String
+  createdAt DateTime @default(now())
+  @@index([productId])
+}
+model AuditEvent {
+  id String @id @default(uuid())
+  actorId String
+  actorType String
+  action String
+  entityId String?
+  productId String?
+  data Json
+  createdAt DateTime @default(now())
+  @@index([productId, createdAt])
+}
+model Idempotency {
+  id String @id @default(uuid())
+  actorId String
+  key String
+  requestHash String
+  response Json?
+  createdAt DateTime @default(now())
+  @@unique([actorId, key])
+}
+model Conversation {
+  id String @id @default(uuid())
+  title String
+  ownerId String
+  productId String?
+  planId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages Message[]
+  runs AgentRun[]
+}
+model Message {
+  id String @id @default(uuid())
+  conversationId String
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  role String
+  text String
+  createdAt DateTime @default(now())
+}
+model AgentRun {
+  id String @id @default(uuid())
+  conversationId String
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  ownerId String
+  sourceKeyId String?
+  status String @default("queued")
+  prompt String
+  tokenHash String @unique
+  tokenCiphertext String
+  scopes String[]
+  productIds String[]
+  stopRequested Boolean @default(false)
+  leaseUntil DateTime?
+  result String?
+  error String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
