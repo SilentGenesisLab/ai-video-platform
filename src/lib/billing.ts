@@ -151,9 +151,10 @@ export async function rateLine(
     const serialized =
       JSON.stringify(tokenInput.messages ?? []) +
       JSON.stringify(tokenInput.tools ?? []);
-    const inputTokens = serialized.includes("image_url")
-      ? 1000000
-      : Buffer.byteLength(serialized, "utf8") + 4096;
+    const inputTokens =
+      kind === "video_understanding" || serialized.includes("image_url")
+        ? 1000000
+        : Buffer.byteLength(serialized, "utf8") + 4096;
     assert(inputTokens <= 1000000, 422, "输入上下文过长");
     units = inputTokens;
     cost = D.max(rate.inputRate ?? 0, rate.cachedInputRate ?? 0)
