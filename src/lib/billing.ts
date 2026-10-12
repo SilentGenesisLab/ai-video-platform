@@ -228,7 +228,10 @@ export async function rateLine(
     units,
     parameters,
     costCny: cost.toString(),
-    amount: points(cost).toString(),
+    creditPolicy: "media-only-v1",
+    billable: kind === "image" || kind === "video",
+    amount:
+      kind === "image" || kind === "video" ? points(cost).toString() : "0",
     version: rate.version,
     basis: rate.basis,
     resolution,
@@ -387,7 +390,10 @@ export async function settleUsage(
         });
       const c = new D(cost);
       assert(c.gte(0), 422, "费用不能为负数");
-      const amount = points(c);
+      // Legacy reservations retain their original charging policy.
+      const line = u.quoteLine as any;
+      const free = line.creditPolicy === "media-only-v1" && !line.billable;
+      const amount = free ? new D(0) : points(c);
       if (w.balance.sub(w.frozen).add(u.reserved).lt(amount))
         return tx.usageRecord.update({
           where: { id },
@@ -412,7 +418,9 @@ export async function settleUsage(
         amount: amount.neg(),
         referenceId: id,
         reason: amount.eq(0)
-          ? "确认未产生费用，释放冻结"
+          ? free && c.gt(0)
+            ? "AI 交互免费，供应商成本单独记录"
+            : "确认未产生费用，释放冻结"
           : type === "actual"
             ? "按供应商账单结算"
             : type === "estimated"
@@ -436,7 +444,7 @@ export async function settleUsage(
       return tx.usageRecord.update({
         where: { id },
         data: {
-          status: amount.eq(0) ? "released" : "settled",
+          status: c.eq(0) ? "released" : "settled",
           charged: amount,
           costCny: c,
           costType: type,

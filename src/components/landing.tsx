@@ -21,7 +21,13 @@ import {
 export function Brand() {
   return (
     <Link href="/" className="ff-brand">
-      <img src="/brand/frameflow-mark.png" width={38} height={38} alt="" className="ff-brand-image" />
+      <img
+        src="/brand/frameflow-mark.png"
+        width={38}
+        height={38}
+        alt=""
+        className="ff-brand-image"
+      />
       <span>
         frameflow<i>.</i>
       </span>
@@ -122,7 +128,7 @@ export default function Landing() {
             </a>
           </div>
           <span className="trial-note">
-            首次手机注册赠送 1000 积分 · 团队共享
+            首次手机注册赠送 20000 积分 · 个人全平台通用
           </span>
         </div>
         <div className="hero-art">
@@ -290,7 +296,7 @@ export default function Landing() {
               [
                 Users,
                 "一个团队，同一份上下文",
-                "成员角色、团队资料和共享积分放在一起管理。不同团队的制作空间独立。",
+                "成员角色、团队资料和积分分配放在一起管理。不同团队的制作空间独立。",
               ],
             ].map(([Icon, title, description]: any) => (
               <article key={title}>
@@ -366,7 +372,7 @@ export default function Landing() {
           <div className="credit-offer">
             <span>首次注册赠送</span>
             <strong>
-              1,000<small>积分</small>
+              20,000<small>积分</small>
             </strong>
             <p>
               放入初始团队，和成员一起使用。
@@ -383,18 +389,18 @@ export default function Landing() {
           {[
             [
               "积分怎么算？",
-              "1 元对应 100 积分。优先按供应商实际费用或核实采购价结算；缺价时默认每请求 1 元，明确标记临时估算。提交前报价，完成后结算。",
+              "AI 对话、附件理解和搜索免费；仅生图和生视频扣积分，1 元对应 100 积分。优先按供应商实际费用或核实采购价结算；缺价时默认每请求 1 元，明确标记临时估算。提交前报价，完成后结算。",
             ],
             [
               "创建多个团队，会重复赠送吗？",
-              "不会。每个新用户仅在首次注册时向个人钱包赠送 1000 积分；另建团队或接受邀请不会再次发放。",
+              "不会。每个新用户仅在首次注册时向个人钱包赠送 20000 积分；另建团队或接受邀请不会再次发放。",
             ],
             [
               "Agent 可以直接生成视频吗？",
               "Agent 可以准备脚本和提交批次。视频必须由具有审核权限的人确认生成内容和报价后才会执行；改动内容或重新生成需要新审批。",
             ],
             [
-              "积分不足，或者模型还没有采购价怎么办？",
+              "生图或生视频时积分不足怎么办？",
               "积分不足时暂停并保留进度，管理员可分配或调整积分。模型缺价时使用默认估算价格，仍可生成；个人余额全平台通用。",
             ],
             [
@@ -438,8 +444,20 @@ export default function Landing() {
           <Link href="/skills/ai-video-platform/SKILL.md">Skill</Link>
           <Link href="/api/v1/openapi.json">接口文档</Link>
           <a href="#faq">常见问题</a>
-          <a href={accountLinks.agreement} target="_blank" rel="noopener noreferrer">产品用户协议</a>
-          <a href={accountLinks.privacy} target="_blank" rel="noopener noreferrer">隐私政策</a>
+          <a
+            href={accountLinks.agreement}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            产品用户协议
+          </a>
+          <a
+            href={accountLinks.privacy}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            隐私政策
+          </a>
         </div>
         <small>© {new Date().getFullYear()} Frameflow</small>
       </footer>

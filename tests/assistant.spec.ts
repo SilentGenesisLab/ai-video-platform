@@ -128,6 +128,7 @@ test("ASSISTANT-03 live SSE yields multiple visible deltas before completion", a
     } as any;
   });
   await login(page);
+  const startingBalance = Number((await api(page, "/billing/wallet")).balance);
   await page.getByRole("button", { name: "创作搭档", exact: true }).click();
   await page.getByRole("button", { name: "新对话", exact: true }).click();
   await page
@@ -135,7 +136,7 @@ test("ASSISTANT-03 live SSE yields multiple visible deltas before completion", a
     .fill(
       "这是流式输出验收。不要调用任何工具，不要生成媒体。请写一份约800字的创意工作习惯建议，分成12条，每条包含具体做法。",
     );
-  await page.getByRole("button", { name: "发送消息", exact: true }).click();
+  await page.getByLabel("发送给创作搭档").press("Enter");
   await expect
     .poll(
       () =>
@@ -168,6 +169,9 @@ test("ASSISTANT-03 live SSE yields multiple visible deltas before completion", a
   );
   expect(events.findIndex((e: any) => e.type === "delta")).toBeLessThan(
     events.findIndex((e: any) => e.type === "complete"),
+  );
+  expect(Number((await api(page, "/billing/wallet")).balance)).toBe(
+    startingBalance,
   );
   const response = await page
     .locator(".assistant-panel .message.assistant")
@@ -286,4 +290,32 @@ test("ASSISTANT-04 composer changes from send to pause and hides run status", as
   await expect(
     panel.getByRole("button", { name: "发送消息", exact: true }),
   ).toBeEnabled();
+});
+
+test("ASSISTANT-05 Shift+Enter and IME preserve draft without sending", async ({
+  page,
+}) => {
+  await login(page);
+  await page.getByRole("button", { name: "创作搭档", exact: true }).click();
+  await page.getByRole("button", { name: "新对话", exact: true }).click();
+  const composer = page.getByLabel("发送给创作搭档");
+  let sends = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      /conversations\/[^/]+\/messages$/.test(request.url())
+    )
+      sends++;
+  });
+  await composer.fill("第一行");
+  await composer.press("Shift+Enter");
+  await composer.press("a");
+  await expect(composer).toHaveValue("第一行\na");
+  await composer.dispatchEvent("keydown", {
+    key: "Enter",
+    code: "Enter",
+    isComposing: true,
+  });
+  await expect(composer).toHaveValue("第一行\na");
+  expect(sends).toBe(0);
 });

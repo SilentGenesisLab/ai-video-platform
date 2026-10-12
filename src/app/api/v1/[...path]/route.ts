@@ -95,7 +95,7 @@ async function handle(
     if (group === "openapi.json" && method === "GET") return ok(openapi());
     if (group === "health" && method === "GET") {
       await db.$queryRaw`SELECT 1`;
-      return ok({ status: "ok", version: "1.4.0" });
+      return ok({ status: "ok", version: "1.4.1" });
     }
     if (group === "auth") {
       const response = await accountRoute(req, id, body);

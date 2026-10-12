@@ -101,7 +101,7 @@ async function main() {
         where: { invocationId: id },
       });
       assert.equal(usage.status, "settled");
-      assert.equal(usage.charged?.toString(), "0.0012");
+      assert.equal(usage.charged?.toString(), "0");
       const replay = await meteredStream(actor, id, channel.id, input);
       assert((await replay.text()).includes("second"));
       assert.equal(calls, 1);
@@ -169,7 +169,7 @@ async function main() {
             where: { invocationId: videoId },
           })
         ).charged?.toString(),
-        "0.0012",
+        "0",
       );
       console.log(
         "PASS administrators can price search/video understanding; Ark usage settles correctly",

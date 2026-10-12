@@ -78,6 +78,9 @@ test("ADMIN-02 account creation, credits, status and session invalidation", asyn
     ),
     user = users.items[0];
   expect(user).toBeTruthy();
+  expect(
+    Number((await request(page, `/platform/users/${user.id}`)).wallet.balance),
+  ).toBe(20000);
   await request(page, "/platform/personal-credits", "POST", {
     userId: user.id,
     amount: 200,
@@ -97,6 +100,10 @@ test("ADMIN-02 account creation, credits, status and session invalidation", asyn
       await other.request.get(process.env.APP_URL! + "/api/v1/billing/wallet")
     ).status(),
   ).toBe(200);
+  const gifted = await (
+    await other.request.get(process.env.APP_URL! + "/api/v1/billing/wallet")
+  ).json();
+  expect(Number(gifted.balance)).toBe(20200);
   expect(
     (
       await other.request.get(process.env.APP_URL! + "/api/v1/platform/users")

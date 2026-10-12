@@ -176,7 +176,7 @@ export default function AuthForm({
           </h2>
           <p className="auth-description">
             {register
-              ? "手机注册，即得 1000 团队共享积分。"
+              ? "手机注册，即得 20000 个人积分，AI 对话免费。"
               : reset
                 ? "验证已绑定的手机号，设置新密码。"
                 : "从上一次的灵感，接着往下。"}

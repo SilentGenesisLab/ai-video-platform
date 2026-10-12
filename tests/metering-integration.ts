@@ -119,7 +119,7 @@ async function main() {
   const usage = await db.usageRecord.findUniqueOrThrow({
     where: { invocationId },
   });
-  assert.equal(usage.charged?.toString(), "0.22");
+  assert.equal(usage.charged?.toString(), "0");
   assert.equal(usage.costType, "calculated");
   await assert.rejects(
     db.personalCreditLedger.update({
@@ -152,7 +152,7 @@ async function main() {
   assert.equal(
     (await db.usageRecord.findUniqueOrThrow({ where: { id: unknown.id } }))
       .status,
-    "reconcile",
+    "settled",
   );
   await settleUsage(unknown.id, 0, "manual");
   global.fetch = async () => new Response("rejected", { status: 400 });

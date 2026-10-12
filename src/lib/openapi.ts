@@ -344,7 +344,7 @@ export function openapi() {
     [
       "/auth/register",
       "post",
-      "Register phone and initial team with 1000 credits",
+      "Register phone and initial team with 20000 personal credits",
       obj(
         {
           phone,
@@ -681,7 +681,7 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.4.0",
+      version: "1.4.1",
       description:
         "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
     },

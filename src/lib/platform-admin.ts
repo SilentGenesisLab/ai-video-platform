@@ -237,7 +237,7 @@ export async function adminRoute(
           },
           select: userSelect,
         });
-        await createTeam(tx, u.id, u.name + "的团队");
+        await createTeam(tx, u.id, u.name + "的团队", true);
         await tx.auditEvent.create({
           data: {
             teamId: a.teamId,

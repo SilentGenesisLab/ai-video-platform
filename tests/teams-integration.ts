@@ -74,7 +74,7 @@ async function main() {
   assert.equal(a.data.platformAdmin, false);
   assert.equal(
     (await request(a.cookie, "/billing/wallet")).data.balance,
-    "1000",
+    "20000",
   );
   await request(
     "",
@@ -218,14 +218,14 @@ async function main() {
   const wallet = await db.userWallet.findUniqueOrThrow({
     where: { userId: a.data.userId },
   });
-  assert.equal(wallet.balance.toString(), "850");
+  assert.equal(wallet.balance.toString(), "19850");
   assert.equal(wallet.frozen.toString(), "0");
   const line = {
     rateId: rate.id,
     channelId: channel.id,
     model: "test-image",
     kind: "image",
-    amount: "600",
+    amount: "12000",
   };
   const race = await withTeam(a.data.teamId, () =>
     Promise.allSettled(

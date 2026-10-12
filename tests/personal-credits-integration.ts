@@ -96,10 +96,51 @@ async function main() {
       provider: "bocha",
       baseUrl: "https://fixture.invalid",
       ciphertext: "fixture",
-      models: { search: ["unpriced"] },
+      models: { image: ["unpriced"], search: ["free-search"] },
     },
   });
-  const line = await rateLine(channel.id, "unpriced", "search");
+  // A zero-balance user can use AI while supplier cost remains traceable.
+  const freeLine = await rateLine(channel.id, "free-search", "search");
+  assert.equal(freeLine.amount, "0");
+  const freeUsage = await withTeam(team.id, () =>
+    db.$transaction((tx) =>
+      reserveUsage(tx, actor, "free:" + stamp, freeLine, "free"),
+    ),
+  );
+  await settleUsage(freeUsage.id, 1, "estimated");
+  const freeInvoice = await db.usageRecord.findUniqueOrThrow({
+    where: { id: freeUsage.id },
+  });
+  assert.equal(String(freeInvoice.charged), "0");
+  assert.equal(String(freeInvoice.costCny), "1");
+  assert.equal(freeInvoice.status, "settled");
+  pass("zero balance search is free and supplier cost is preserved");
+  const legacy = await withTeam(team.id, () =>
+    db.$transaction((tx) =>
+      reserveUsage(
+        tx,
+        ma,
+        "legacy:" + stamp,
+        { ...freeLine, creditPolicy: "legacy", billable: true, amount: "10" },
+        "legacy",
+      ),
+    ),
+  );
+  await settleUsage(legacy.id, 0.1);
+  assert.equal(
+    String(
+      (await db.usageRecord.findUniqueOrThrow({ where: { id: legacy.id } }))
+        .charged,
+    ),
+    "10",
+  );
+  await db.userWallet.update({
+    where: { userId: member.id },
+    data: { balance: { increment: 10 } },
+  });
+  pass("historical reservations retain original credit policy");
+
+  const line = await rateLine(channel.id, "unpriced", "image");
   assert.equal(line.sourceType, "estimated");
   assert.equal(line.amount, "100");
   pass("unpriced model quotes 1 CNY instead of blocking");
