@@ -90,4 +90,7 @@
 
 复现：先启动测试数据库、Redis、网站及 Worker，配置私有 `.env`，运行 `npm test`、`npm run test:integration`、`npx tsx --env-file=.env tests/product-insights-integration.ts`、`npm run test:browser` 和 `npx tsx --env-file=.env tests/skill-install.ts`。新增 MP4 固定样本位于 `tests/fixtures/reference.mp4`，由 FFmpeg 合成静音色块，无第三方素材。完整 API 检查会写入隔离测试库，不能针对生产库运行。
 
-生产仅运行 `PRODUCTION_SMOKE=1 npx playwright test tests/product-insights.browser.spec.ts --grep @production`，创建可归档的验收产品，不上传待解析素材，不调用媒体生成；生产验证记录在发布后补充。浏览器原始报告与截图留在私有运行目录，不进入公开仓库。
+生产仅运行 `PRODUCTION_SMOKE=1 npx playwright test tests/product-insights.browser.spec.ts --grep @production`，创建可归档的验收产品，不上传待解析素材，不调用媒体生成；正式站点 `https://aivideo.sligenai.cn` 的页面验收已通过（1/1，9.6 秒），覆盖产品新建、洞察、Brief、外部参考、历史、手机布局及未保存提醒；验收产品已归档。旧业务产品上下文、HTTPS 健康检查、OpenAPI 和 Skill ZIP 均通过。浏览器原始报告与截图留在私有运行目录，不进入公开仓库。
+
+
+发布镜像：`v1-20261012-insights`；应用源码提交：`9dd73909159766046ecd71c21dc057fa56f62fb8`。发布前备份位于服务器 `backups/aivideo-20261012-130333.dump`，旧配置与镜像信息保存在 `backups/pre-insights-20261012/`。Web、Worker、Agent 均运行正常。继续使用现有有效证书，未改变其他站点的反向代理配置。生产测试只写入验收产品及其修订和审计，没有调用付费媒体生成。
