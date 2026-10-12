@@ -24,7 +24,7 @@ export async function parseDocument(
   } else if (mime === "application/pdf") {
     const parse = (await import("pdf-parse/lib/pdf-parse.js")).default;
     let page = 0;
-    await (parse as any)(buffer, {
+    await (parse as any)(Uint8Array.from(buffer), {
       version: "v2.0.550",
       pagerender: async (p: any) => {
         page++;

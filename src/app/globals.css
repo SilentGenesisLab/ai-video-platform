@@ -2341,6 +2341,96 @@ fieldset label {
   font-weight: 600;
   font-size: 12px;
 }
+.concept-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid #dfe8d8;
+  border-radius: 14px;
+  background: #ffffffa8;
+}
+.concept-filters > label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 160px;
+  font-size: 12px;
+  color: #697c65;
+}
+.concept-filters small {
+  font-size: 11px;
+  color: #7d8b78;
+  align-self: center;
+}
+.concept-card button.concept-score {
+  border: 0;
+  background: transparent;
+  padding: 5px 0;
+  cursor: pointer;
+}
+.concept-card button.concept-score:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.concept-card footer .concept-delete {
+  color: #ae6154;
+}
+.concept-action-body {
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+}
+.concept-action-body label {
+  display: grid;
+  gap: 10px;
+}
+.concept-action-body input {
+  border: 1px solid #dbe5d3;
+  border-radius: 9px;
+  padding: 12px;
+  font: inherit;
+}
+html[data-studio-theme="dark"] .concept-filters {
+  background: #20362de8;
+  border-color: #385044;
+}
+html[data-studio-theme="dark"] .concept-filters > label,
+html[data-studio-theme="dark"] .concept-filters small {
+  color: #c1d2ba;
+}
+html[data-studio-theme="dark"] .concept-card footer .concept-delete {
+  color: #edaa94;
+}
+@media (max-width: 650px) {
+  .concept-filters > label {
+    min-width: 0;
+    width: 100%;
+  }
+  .concept-filters {
+    gap: 14px;
+  }
+  .workspace .toolbar > div {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+  .workspace .toolbar .ff-select {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .workspace .toolbar .ff-select-trigger {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .workspace .toolbar .ff-select-trigger > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 .price-config-link {
   display: block;
   color: #557339;
@@ -2362,13 +2452,63 @@ fieldset label {
   text-decoration: underline;
 }
 
-.concept-card .card-body p { min-height: 0; font-size: 13px; color: #718176; }
-.concept-card .card-body h3 { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.concept-card .card-body p {
+  min-height: 0;
+  font-size: 13px;
+  color: #718176;
+}
+.concept-card .card-body h3 {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
 
-.assistant-reference { display:flex; align-items:center; gap:8px; padding:9px 12px; border:1px solid var(--line,#dfe5dc); border-radius:10px; margin:6px 0; background:var(--surface,#f2f6ef); font-size:12px; }
-.assistant-reference span {flex:1; overflow-wrap:anywhere;}
-.assistant-reference button {background:none;border:0;cursor:pointer;}
-.assistant-references {max-height:160px;overflow:auto;}
-.assistant-media-card {margin:14px 0;padding:14px;border:1px solid var(--line,#dfe5dc);border-radius:14px;display:grid;gap:8px;}
-.assistant-media-output img,.assistant-media-output video {width:100%;max-height:380px;object-fit:contain;border-radius:10px;}
-.assistant-media-placeholder {min-height:150px;display:flex;gap:10px;align-items:center;justify-content:center;background:var(--surface,#f2f6ef);border-radius:10px;}
+.assistant-reference {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--line, #dfe5dc);
+  border-radius: 10px;
+  margin: 6px 0;
+  background: var(--surface, #f2f6ef);
+  font-size: 12px;
+}
+.assistant-reference span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.assistant-reference button {
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.assistant-references {
+  max-height: 160px;
+  overflow: auto;
+}
+.assistant-media-card {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--line, #dfe5dc);
+  border-radius: 14px;
+  display: grid;
+  gap: 8px;
+}
+.assistant-media-output img,
+.assistant-media-output video {
+  width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+.assistant-media-placeholder {
+  min-height: 150px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface, #f2f6ef);
+  border-radius: 10px;
+}
