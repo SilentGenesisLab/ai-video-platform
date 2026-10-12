@@ -18,13 +18,6 @@ import {
 import { api, readApiResponse } from "./api";
 import { PasswordInput, SmsCode } from "./auth-form";
 import { accountLinks } from "./account-links";
-const roleNames: Record<string, string> = {
-  owner: "团队所有者",
-  admin: "团队管理员",
-  editor: "编辑",
-  reviewer: "审核",
-  viewer: "只读成员",
-};
 async function upload(path: string, form: FormData) {
   const r = await fetch("/api/v1" + path, { method: "POST", body: form });
   const data = await readApiResponse(r);
@@ -116,7 +109,7 @@ export default function AccountMenu({
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
   const name = profile?.name ?? actor?.name ?? "加载中",
-    role = roleNames[actor?.teamRole ?? actor?.role] ?? "团队成员";
+    role = actor?.platformAdmin ? "管理员" : "普通用户";
   function closeModal() {
     setModal(null);
     requestAnimationFrame(() => trigger.current?.focus());
@@ -172,6 +165,18 @@ export default function AccountMenu({
               ))}
             </div>
           </div>
+          {actor?.platformAdmin && (
+            <a
+              role="menuitem"
+              href="/admin"
+              onClick={(e) => {
+                if (!canLeave()) e.preventDefault();
+              }}
+            >
+              <ShieldCheck size={18} />
+              管理后台
+            </a>
+          )}
           <button
             role="menuitem"
             onClick={() => {

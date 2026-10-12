@@ -494,6 +494,11 @@ export function openapi() {
       "Platform admin: days/from/to/teamId/actorId/channelId/model filters",
     ],
     [
+      "/platform/overview",
+      "get",
+      "Platform admin: Shanghai daily registrations, model invocations and charged credits; fourteen-day trend and recent failed calls",
+    ],
+    [
       "/platform/settings",
       "get",
       "Platform admin: default estimated request price",
