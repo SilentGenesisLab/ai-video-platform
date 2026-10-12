@@ -613,6 +613,64 @@ export async function billingRoute(
   }
   if (group === "platform") {
     requirePlatform(a);
+    if (id === "rates" && action === "confirm-current" && method === "POST") {
+      return systemDb.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('platform-confirm-prices'))`;
+        const current = await tx.purchaseRate.findMany({
+          orderBy: { version: "desc" },
+          where: { effectiveAt: { lte: new Date() } },
+        });
+        const seen = new Set<string>();
+        let count = 0;
+        for (const r of current) {
+          const key = JSON.stringify([
+            r.channelId,
+            r.model,
+            r.resolution,
+            r.supplier,
+          ]);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (r.sourceType === "verified") continue;
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"price:" + r.channelId + r.model}))`;
+          const latest = await tx.purchaseRate.findFirst({
+            where: {
+              channelId: r.channelId,
+              model: r.model,
+              resolution: r.resolution,
+              supplier: r.supplier,
+            },
+            orderBy: { version: "desc" },
+          });
+          if (latest?.sourceType === "verified") continue;
+          const { id: oldId, createdAt, ...data } = r;
+          const next = await tx.purchaseRate.create({
+            data: {
+              ...data,
+              pricingParameters: json(r.pricingParameters),
+              billingSchedule: json(r.billingSchedule),
+              version: (latest?.version ?? r.version) + 1,
+              sourceType: "verified",
+              checkedAt: new Date(),
+              effectiveAt: new Date(),
+              createdBy: a.userId,
+              basis: r.basis + "；平台管理员确认沿用此配置",
+            },
+          });
+          await tx.auditEvent.create({
+            data: {
+              actorId: a.userId,
+              actorType: "human",
+              action: "platform.price_verified",
+              entityId: next.id,
+              data: { previousRateId: oldId, version: next.version },
+            },
+          });
+          count++;
+        }
+        return { confirmed: count };
+      });
+    }
     if (id === "rates" && method === "GET")
       return {
         items: await systemDb.purchaseRate.findMany({

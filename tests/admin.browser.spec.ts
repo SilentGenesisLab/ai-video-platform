@@ -50,10 +50,22 @@ test("ADMIN-01 four modules, filters, defaults and mobile layout", async ({
   await expect(
     page.getByRole("heading", { name: "用户管理", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "积分管理", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "团队分配给成员" }),
+    page.getByRole("button", { name: "积分管理", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("row")
+    .filter({
+      has: page.getByRole("button", { name: "详情 / 编辑", exact: true }),
+    })
+    .first()
+    .getByRole("button", { name: "详情 / 编辑", exact: true })
+    .click();
+  await expect(page.getByRole("dialog", { name: "用户详情" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "调整个人积分", exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "关闭用户详情", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(
@@ -183,7 +195,7 @@ test("ADMIN-03 channel configuration, immutable price and pool allocation", asyn
     .fill("private-test-value");
   await page
     .locator('textarea[name="models"]')
-    .fill('{"text":["fixture-text"]}');
+    .fill('{"text":["fixture-text"],"audio":["fixture-audio-estimated"]}');
   await page.getByRole("button", { name: "保存渠道", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("已保存");
   const channels = (await request(page, "/channels")).items;
@@ -217,29 +229,81 @@ test("ADMIN-03 channel configuration, immutable price and pool allocation", asyn
       .filter({ hasText: name })
       .getByRole("button", { name: "启用", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "积分管理", exact: true }).click();
-  const pool = page.locator("form").filter({
-    has: page.getByRole("heading", { name: "调整团队公共池", exact: true }),
+  // Local fixture only: an immutable automatically estimated rate.
+  const { systemDb } = await import("../src/lib/db");
+  const estimated = await systemDb.purchaseRate.create({
+    data: {
+      channelId: channel.id,
+      model: "fixture-audio-estimated",
+      kind: "audio",
+      unit: "request",
+      rate: 0.5,
+      sourceType: "estimated",
+      basis: "本地核实测试",
+      version: 1,
+      createdBy: actor.userId,
+    },
   });
-  await pool.locator('select[name="teamId"]').selectOption(actor.teamId);
-  await pool.locator('input[name="amount"]').fill("100");
-  await pool.locator('input[name="reason"]').fill("浏览器分配测试");
-  await pool
-    .getByRole("button", { name: "确认调整团队积分", exact: true })
+  await page
+    .getByRole("button", { name: "核实全部当前配置", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("团队公共积分已调整");
-  const before = await request(page, "/billing/wallet");
-  const allocation = page.locator("form").filter({
-    has: page.getByRole("heading", { name: "团队分配给成员", exact: true }),
-  });
-  await allocation.locator("select").first().selectOption(actor.teamId);
-  await allocation.locator('select[name="userId"]').selectOption(actor.userId);
-  await allocation.locator('input[name="amount"]').fill("100");
-  await allocation.locator('input[name="reason"]').fill("浏览器分配测试");
-  await allocation
-    .getByRole("button", { name: "确认分配积分", exact: true })
+  await expect(page.getByRole("status")).toContainText("已核实");
+  const versions = (await request(page, "/platform/rates")).items.filter(
+    (r: any) => r.model === estimated.model && r.channelId === channel.id,
+  );
+  expect(versions.find((r: any) => r.id === estimated.id).sourceType).toBe(
+    "estimated",
+  );
+  const confirmed = versions.sort((a: any, b: any) => b.version - a.version)[0];
+  expect(confirmed.sourceType).toBe("verified");
+  expect(Number(confirmed.rate)).toBe(0.5);
+  await page.getByRole("button", { name: "用户管理", exact: true }).click();
+  await page.getByLabel("搜索用户").fill(process.env.ADMIN_EMAIL!);
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await page
+    .getByRole("row")
+    .filter({ hasText: process.env.ADMIN_EMAIL! })
+    .getByRole("button", { name: "详情 / 编辑", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("积分已分配到个人余额");
-  const after = await request(page, "/billing/wallet");
-  expect(Number(after.balance) - Number(before.balance)).toBeCloseTo(100, 5);
+  const dialog = page.getByRole("dialog", { name: "用户详情" });
+  const before = await request(page, "/platform/users/" + actor.userId);
+  await dialog.getByLabel("个人调整积分", { exact: true }).fill("25");
+  await dialog
+    .getByLabel("个人调整原因", { exact: true })
+    .fill("本地弹窗积分验收");
+  await dialog
+    .getByRole("button", { name: "确认调整个人积分", exact: true })
+    .click();
+  await expect(dialog.getByRole("status")).toContainText("个人积分已调整");
+  const after = await request(page, "/platform/users/" + actor.userId);
+  expect(
+    Number(after.wallet.balance) - Number(before.wallet.balance),
+  ).toBeCloseTo(25, 5);
+  if (after.createdTeams.length) {
+    const team = after.createdTeams.find((t: any) => !t.archived);
+    if (team) {
+      const teamForm = dialog.locator("form").filter({
+        has: dialog.getByRole("heading", { name: team.name, exact: true }),
+      });
+      await teamForm.getByLabel("团队调整积分", { exact: true }).fill("15");
+      await teamForm
+        .getByLabel("团队调整原因", { exact: true })
+        .fill("本地团队弹窗验收");
+      await teamForm
+        .getByRole("button", { name: "确认调整团队积分", exact: true })
+        .click();
+      await expect(dialog.getByRole("status")).toContainText(
+        "团队公共积分已调整",
+      );
+      const updated = await request(page, "/platform/users/" + actor.userId);
+      expect(
+        Number(
+          updated.createdTeams.find((t: any) => t.id === team.id).wallet
+            .balance,
+        ) - Number(team.wallet.balance),
+      ).toBeCloseTo(15, 5);
+    }
+  }
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
 });
