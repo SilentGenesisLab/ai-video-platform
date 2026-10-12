@@ -19,7 +19,15 @@ export async function saveRate(a: Actor, input: any) {
     .object({
       channelId: z.string(),
       model: z.string().min(1),
-      kind: z.enum(["text", "vision", "image", "video", "audio"]),
+      kind: z.enum([
+        "text",
+        "vision",
+        "image",
+        "video",
+        "audio",
+        "video_understanding",
+        "search",
+      ]),
       unit: z.enum(["token", "image", "second", "request"]),
       rate: z.coerce.number().positive(),
       inputRate: z.coerce.number().nonnegative().optional(),
@@ -407,7 +415,16 @@ export async function usageFromResult(
     if (matched[0]) r = matched[0];
   }
   if (r.unit === "token") {
-    const usage = result.usage;
+    const raw = result.usage;
+    const usage = raw
+      ? {
+          ...raw,
+          prompt_tokens: raw.prompt_tokens ?? raw.input_tokens,
+          completion_tokens: raw.completion_tokens ?? raw.output_tokens,
+          prompt_tokens_details:
+            raw.prompt_tokens_details ?? raw.input_tokens_details,
+        }
+      : undefined;
     if (
       !usage ||
       !Number.isFinite(usage.prompt_tokens) ||

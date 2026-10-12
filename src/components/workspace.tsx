@@ -48,6 +48,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import Markdown from "react-markdown";
+import { useAssistant } from "./assistant";
 import ProductDetail from "./product-detail";
 import { api, Item, labels } from "./api";
 const navigation = [
@@ -1043,6 +1044,7 @@ function ChannelEditor({ item, onClose, onSaved, notify }: any) {
           enabled: item.enabled,
           concurrency: item.concurrency,
           models: item.models,
+          options: item.options ?? { timeoutMs: 180000, searchLimit: 5 },
         }
       : {
           name: "",
@@ -1051,6 +1053,7 @@ function ChannelEditor({ item, onClose, onSaved, notify }: any) {
           apiKey: "",
           enabled: true,
           concurrency: 3,
+          options: { timeoutMs: 180000, searchLimit: 5 },
           models: {
             image: ["gpt-image-2.5"],
             video: ["seedance-2.5"],
@@ -1097,10 +1100,42 @@ function ChannelEditor({ item, onClose, onSaved, notify }: any) {
             适配器
             <select
               value={data.provider}
-              onChange={(e) => setData({ ...data, provider: e.target.value })}
+              onChange={(e) => {
+                const provider = e.target.value;
+                const presets: any = {
+                  volcengine: {
+                    baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+                    models: {
+                      video_understanding: ["doubao-seed-2-1-pro-260628"],
+                    },
+                  },
+                  bocha: {
+                    baseUrl: "https://api.bocha.cn",
+                    models: { search: ["web-search"] },
+                  },
+                  deepseek: {
+                    baseUrl: "https://api.deepseek.com",
+                    models: {
+                      text: ["deepseek-flash"],
+                      vision: ["deepseek-flash"],
+                    },
+                  },
+                  aicentre: {
+                    baseUrl: "https://aicentre2.sligenai.cn:8443",
+                    models: {
+                      image: ["gpt-image-2.5"],
+                      video: ["seedance-2.5"],
+                      audio: ["suno-v6", "suno-sound"],
+                    },
+                  },
+                };
+                setData({ ...data, provider, ...presets[provider] });
+              }}
             >
               <option value="aicentre">AI Centre</option>
               <option value="deepseek">DeepSeek</option>
+              <option value="volcengine">火山方舟 · 豆包视频理解</option>
+              <option value="bocha">博查 · 联网搜索</option>
             </select>
           </label>
           <label>
@@ -1128,6 +1163,11 @@ function ChannelEditor({ item, onClose, onSaved, notify }: any) {
               label="能力与模型列表"
               value={data.models}
               onChange={(v: any) => setData({ ...data, models: v })}
+            />
+            <JsonInput
+              label="超时与搜索限制"
+              value={data.options}
+              onChange={(v: any) => setData({ ...data, options: v })}
             />
           </div>
         </div>
@@ -1472,206 +1512,6 @@ function GenerationDialog({
   );
 }
 
-function ChatPanel({
-  productId,
-  planId,
-  onClose,
-  onChanged,
-  notify,
-  readOnly = false,
-}: any) {
-  const [conversations, setConversations] = useState<any[]>([]),
-    [id, setId] = useState(""),
-    [conversation, setConversation] = useState<any>(null),
-    [text, setText] = useState(""),
-    [sending, setSending] = useState(false);
-  useEffect(() => {
-    api("/conversations")
-      .then((r) => {
-        const items = r.items.filter(
-          (c: any) =>
-            (!productId || c.productId === productId) &&
-            (!planId || c.planId === planId),
-        );
-        setConversations(items);
-        setId(items[0]?.id ?? "");
-      })
-      .catch(() => {});
-  }, [productId, planId]);
-  useEffect(() => {
-    if (!id) {
-      setConversation(null);
-      return;
-    }
-    let mounted = true;
-    const read = () =>
-      api("/conversations/" + id)
-        .then((c) => {
-          if (mounted) setConversation(c);
-        })
-        .catch((e) => {
-          if (mounted) notify(e.message);
-        });
-    void read();
-    const t = setInterval(read, 2500);
-    return () => {
-      mounted = false;
-      clearInterval(t);
-    };
-  }, [id]);
-  const run = conversation?.runs?.[0],
-    active = run && ["queued", "running"].includes(run.status);
-  async function send() {
-    if (readOnly || !text.trim() || active || sending) return;
-    setSending(true);
-    try {
-      let cid = id;
-      if (!cid) {
-        const c = await api("/conversations", "POST", {
-          title: text.slice(0, 30),
-          ...(productId ? { productId } : {}),
-          ...(planId ? { planId } : {}),
-        });
-        cid = c.id;
-        setId(cid);
-        setConversations([c, ...conversations]);
-      }
-      await api("/conversations/" + cid + "/messages", "POST", { text });
-      setText("");
-      setConversation(await api("/conversations/" + cid));
-      onChanged();
-    } catch (e) {
-      notify((e as Error).message);
-    } finally {
-      setSending(false);
-    }
-  }
-  return (
-    <aside className="chat-panel">
-      <header>
-        <span className="agent-orb">
-          <Sparkles size={18} />
-        </span>
-        <div>
-          <b>创作搭档</b>
-          <small>DeepSeek Flash</small>
-        </div>
-        <button aria-label="关闭聊天" className="icon-button" onClick={onClose}>
-          <PanelRightClose size={20} />
-        </button>
-      </header>
-      <div className="chat-select">
-        <select
-          aria-label="选择会话"
-          value={id}
-          onChange={(e) => setId(e.target.value)}
-        >
-          <option value="">新对话</option>
-          {conversations.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-            </option>
-          ))}
-        </select>
-        <button
-          aria-label="新对话"
-          className="icon-button"
-          onClick={() => setId("")}
-        >
-          <Plus size={18} />
-        </button>
-      </div>
-      <div className="chat-messages">
-        {!conversation?.messages?.length && (
-          <div className="chat-welcome">
-            <Sparkles size={30} />
-            <h3>
-              下一个好想法，
-              <br />
-              从这里开始。
-            </h3>
-            <p>
-              告诉我你想做什么，我会读取资料、保存成果，并把进度留在工作台。
-            </p>
-            {[
-              "根据产品资料，整理一份清晰的 Brief",
-              "给这个产品提出 10 个不同的创意方向",
-            ].map((s) => (
-              <button key={s} onClick={() => setText(s)}>
-                {s}
-                <ArrowUpRight size={15} />
-              </button>
-            ))}
-          </div>
-        )}
-        {conversation?.messages.map((m: any) => (
-          <div className={"message " + m.role} key={m.id}>
-            <span>{m.role === "user" ? "你" : "创作搭档"}</span>
-            <Markdown>{m.text}</Markdown>
-          </div>
-        ))}
-        {run && (
-          <div className="run-status">
-            <Badge status={run.status} />
-            {active ? (
-              <Button
-                onClick={() =>
-                  api("/agent-runs/" + run.id + "/stop", "POST", {}).catch(
-                    (e) => notify(e.message),
-                  )
-                }
-              >
-                <Pause size={14} />
-                停止
-              </Button>
-            ) : ["paused", "failed", "stopped"].includes(run.status) ? (
-              <Button
-                onClick={() =>
-                  api("/agent-runs/" + run.id + "/continue", "POST", {}).catch(
-                    (e) => notify(e.message),
-                  )
-                }
-              >
-                <Play size={14} />
-                继续
-              </Button>
-            ) : null}
-          </div>
-        )}
-      </div>
-      <div className="chat-input">
-        <textarea
-          aria-label="发送给创作搭档"
-          disabled={readOnly}
-          rows={3}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="描述你的想法…"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-        />
-        <div>
-          <small>
-            {readOnly ? "当前账号为只读，可查看已有对话" : "视频生成需人工审批"}
-          </small>
-          <button
-            className="send"
-            aria-label="发送消息"
-            onClick={send}
-            disabled={readOnly || active || sending || !text.trim()}
-          >
-            <ArrowUpRight size={20} />
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 async function allResources(path: string) {
   const first = await api(`${path}?limit=100`);
   const items = [...first.items];
@@ -1683,6 +1523,11 @@ async function allResources(path: string) {
   return { items };
 }
 export default function Workspace() {
+  const {
+    open: chat,
+    setOpen: setChat,
+    setContext: setAssistantContext,
+  } = useAssistant();
   const pathname = usePathname(),
     router = useRouter(),
     section = pathname.split("/")[2] ?? "products",
@@ -1711,7 +1556,6 @@ export default function Workspace() {
     [channelEditor, setChannelEditor] = useState<any>(null),
     [generation, setGeneration] = useState(false),
     [detail, setDetail] = useState<any>(null),
-    [chat, setChat] = useState(false),
     [toast, setToast] = useState<{ text: string; kind: string } | null>(null),
     [members, setMembers] = useState<any[] | null>(null),
     [instructions, setInstructions] = useState("");
@@ -1872,6 +1716,34 @@ export default function Workspace() {
           : ""),
     );
   }
+  useEffect(() => {
+    setAssistantContext({
+      productId:
+        productDetailId === "new"
+          ? undefined
+          : productDetailId || productId || undefined,
+      planId: planFilter || undefined,
+      readOnly: !canWrite,
+      userId: actor?.userId,
+      teamId: actor?.teamId,
+    });
+  }, [
+    productDetailId,
+    productId,
+    planFilter,
+    canWrite,
+    actor?.userId,
+    actor?.teamId,
+    setAssistantContext,
+  ]);
+  useEffect(() => {
+    const changed = () => {
+      void load();
+      window.dispatchEvent(new Event("product-updated"));
+    };
+    window.addEventListener("assistant:changed", changed);
+    return () => window.removeEventListener("assistant:changed", changed);
+  }, [load]);
   async function copyInstructions(key: any) {
     try {
       const result = await api(
@@ -1934,7 +1806,7 @@ export default function Workspace() {
     }
   }
   return (
-    <div className={"workspace " + (chat ? "with-chat" : "")}>
+    <div className="workspace">
       <aside className="sidebar">
         <a className="brand" href="/studio/products">
           <span className="brand-mark">
@@ -2474,7 +2346,16 @@ export default function Workspace() {
                     <article className="channel-card" key={c.id}>
                       <header>
                         <span className="channel-logo">
-                          {c.provider === "deepseek" ? "D" : "AI"}
+                          {
+                            (
+                              {
+                                deepseek: "D",
+                                volcengine: "豆",
+                                bocha: "搜",
+                                aicentre: "AI",
+                              } as any
+                            )[c.provider]
+                          }
                         </span>
                         <Badge status={c.enabled ? "ready" : "stopped"} />
                       </header>
@@ -2849,23 +2730,6 @@ export default function Workspace() {
           </footer>
         </div>
       </main>
-      {chat && (
-        <ChatPanel
-          readOnly={!canWrite}
-          productId={
-            productDetailId === "new"
-              ? undefined
-              : productDetailId || productId || undefined
-          }
-          planId={planFilter || undefined}
-          onClose={() => setChat(false)}
-          onChanged={() => {
-            void load();
-            window.dispatchEvent(new Event("product-updated"));
-          }}
-          notify={notify}
-        />
-      )}
       {toast && (
         <div role="status" className={"toast " + toast.kind}>
           {toast.kind === "success" ? (

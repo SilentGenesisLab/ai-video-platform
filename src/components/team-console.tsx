@@ -593,7 +593,15 @@ export default function TeamConsole() {
                 <label>
                   能力
                   <select name="kind">
-                    {["text", "vision", "image", "video", "audio"].map((s) => (
+                    {[
+                      "text",
+                      "vision",
+                      "image",
+                      "video",
+                      "audio",
+                      "video_understanding",
+                      "search",
+                    ].map((s) => (
                       <option key={s}>{s}</option>
                     ))}
                   </select>

@@ -11,7 +11,17 @@ async function request(
   body?: unknown,
   token?: string,
   key = randomUUID(),
-) {
+): Promise<{ status: number; data: any; headers: Headers }> {
+  if (
+    path === "/production-batches" &&
+    method === "POST" &&
+    body &&
+    !(body as any).quoteId
+  ) {
+    const quote = await request("/billing/quotes", "POST", body, token);
+    assert.equal(quote.status, 200);
+    body = { ...(body as any), quoteId: quote.data.id };
+  }
   const r = await fetch(base + "/api/v1" + path, {
     method,
     headers: {

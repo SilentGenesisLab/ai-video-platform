@@ -2,6 +2,7 @@ import { adaptProductContent, normalizeProductUpdate } from "./product-content";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "./db";
+import { conversationAccess, fileAccess } from "./access";
 import {
   Actor,
   agentScopes,
@@ -65,9 +66,16 @@ export async function idempotent(
       teamId_actorId_key: { teamId: actor.teamId, actorId: actor.id, key },
     };
   const previous = await db.idempotency.findUnique({ where });
-  const replay = (response: any) => {
+  const replay = async (response: any) => {
     if (response?.kind === "product") productAccess(actor, response.id);
     else if (response?.productId) productAccess(actor, response.productId);
+    if (response?.file?.id) await fileAccess(actor, response.file.id);
+    if (response?.conversationId)
+      await conversationAccess(actor, response.conversationId);
+    // Conversation creation returns the conversation itself, including an
+    // intentionally nullable productId. Recheck its current ownership/scope.
+    if (response?.ownerId && "productId" in response && response?.title)
+      await conversationAccess(actor, response.id);
     return response;
   };
   if (previous) {
@@ -699,8 +707,8 @@ export async function keyAction(actor: Actor, id: string, action: string) {
     );
     await audit(tx, actor, "key.instructions_copied", id);
     return {
-      instructions: `请安装并使用 AI Video Platform Skill（版本 1.2.0）。\n平台：${base}\n安装入口：${base}/skills/ai-video-platform/SKILL.md\n安装包：${base}/skills/ai-video-platform.zip\n\n将以下配置保存到你环境的私有凭据配置中，不打印或提交到仓库：\nAIVIDEO_BASE_URL=${base}\nAIVIDEO_API_KEY=${decrypt(key.ciphertext)}\n\n先读取安装入口，安装到当前 Agent 支持的 Skill 目录。使用 GET /api/v1/auth/me 验证身份与权限；验证阶段不要创建数据或调用生成。后续按我的具体任务操作平台。\n权限：${key.scopes.join(", ")}\n固定团队：${actor.teamName} (${actor.teamId})\n产品范围：${key.productIds.length ? key.productIds.join(", ") : "全部产品"}\n视频生成必须在平台人工审批。`,
-      skillVersion: "1.2.0",
+      instructions: `请安装并使用 AI Video Platform Skill（版本 1.3.0）。\n平台：${base}\n安装入口：${base}/skills/ai-video-platform/SKILL.md\n安装包：${base}/skills/ai-video-platform.zip\n\n将以下配置保存到你环境的私有凭据配置中，不打印或提交到仓库：\nAIVIDEO_BASE_URL=${base}\nAIVIDEO_API_KEY=${decrypt(key.ciphertext)}\n\n先读取安装入口，安装到当前 Agent 支持的 Skill 目录。使用 GET /api/v1/auth/me 验证身份与权限；验证阶段不要创建数据或调用生成。后续按我的具体任务操作平台。\n权限：${key.scopes.join(", ")}\n固定团队：${actor.teamName} (${actor.teamId})\n产品范围：${key.productIds.length ? key.productIds.join(", ") : "全部产品"}\n视频生成必须在平台人工审批。`,
+      skillVersion: "1.3.0",
     };
   });
 }

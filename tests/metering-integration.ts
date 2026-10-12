@@ -7,7 +7,12 @@ import { meteredCall } from "../src/lib/metering";
 import { rateLine, settleUsage } from "../src/lib/billing";
 import { workerActor } from "../src/lib/worker-access";
 import { consumeSms } from "../src/lib/sms";
-assert(process.env.DATABASE_URL?.endsWith("/frameflow_teams"));
+assert(
+  process.env.DATABASE_URL?.endsWith("/frameflow_teams") ||
+    (process.env.ALLOW_LOCAL_REVIEW_TESTS === "1" &&
+      process.env.APP_URL === "http://127.0.0.1:3000" &&
+      process.env.DATABASE_URL?.includes("127.0.0.1:55432/aivideo")),
+);
 async function main() {
   const user = await db.user.findFirstOrThrow({
       where: { name: { startsWith: "隔离甲" } },
@@ -54,7 +59,7 @@ async function main() {
       null,
     );
     assert.equal(
-      await scoped.revision.count({ where: { resourceId: file.productId } }),
+      await scoped.revision.count({ where: { resourceId: file.productId! } }),
       0,
     );
     assert.equal(

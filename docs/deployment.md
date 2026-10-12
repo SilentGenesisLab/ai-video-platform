@@ -96,3 +96,8 @@ docker compose exec -T postgres psql -U aivideo -d aivideo_restore -c 'SELECT co
 新增 `remark-gfm` 已写入 lockfile。公开 Skill 与接入指令版本均为 1.1.0，下载包包含产品洞察参考文档。升级后确认 `GET /api/v1/openapi.json`、Skill ZIP 和生产只读产品上下文可访问。
 
 回退时先暂停业务写入，再使用上一个应用镜像及对应配置。旧版本不理解新字段，不应让旧客户端覆盖已补充的洞察；必要时从备份恢复到隔离库核对后切换，不直接覆盖在线数据库。素材解除关联不删除 OSS 文件，历史引用仍可追溯。
+
+
+## 助手 1.2 发布
+
+新增迁移、四个功能开关、方舟/博查私有配置、SSE 代理要求和回退限制见 [助手升级](assistant-upgrade.md)。构建必须使用独立发布目录，完成验证后再切换共享部署目录；多个工作树不能同时解压到 `/opt/ai-video-platform`。

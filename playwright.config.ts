@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: process.env.TEST_ENV_FILE || ".env", quiet: true });
 export default defineConfig({
   testDir: "./tests",
-  testMatch: /(?:browser|workflow)\.spec\.ts/,
+  testMatch: /(?:browser|workflow|assistant)\.spec\.ts/,
   timeout: 90000,
   workers: 1,
   expect: { timeout: 10000 },

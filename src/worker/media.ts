@@ -1,3 +1,4 @@
+import { parseDocument } from "./documents";
 import { workerActor } from "../lib/worker-access";
 import { meteredCall } from "../lib/metering";
 import { execFile } from "node:child_process";
@@ -59,13 +60,10 @@ export async function parseFile(fileId: string, jobId: string) {
       buffer = result.content as Buffer;
     let text = "",
       metadata: Record<string, unknown> = {};
-    if (file.mime.startsWith("text/")) text = buffer.toString("utf8");
-    else if (file.mime === "application/pdf") {
-      const parse = (await import("pdf-parse/lib/pdf-parse.js")).default;
-      text = (await parse(buffer)).text;
-    } else if (file.name.toLowerCase().endsWith(".docx")) {
-      const mammoth = await import("mammoth");
-      text = (await mammoth.extractRawText({ buffer })).value;
+    const document = await parseDocument(buffer, file.mime, file.name);
+    if (document) {
+      text = document.text;
+      metadata = { sections: document.sections };
     } else if (file.mime.startsWith("image/")) {
       const image = await sharp(buffer).metadata();
       metadata = { width: image.width, height: image.height };
@@ -171,13 +169,14 @@ export async function parseFile(fileId: string, jobId: string) {
           "/v1/asr/transcriptions",
         );
         text = speech.text ?? "";
+        metadata.transcript = speech;
       }
     }
     await db.fileObject.update({
       where: { id: fileId },
       data: {
         parseStatus: "completed",
-        extractedText: text.slice(0, 500000),
+        extractedText: text,
         metadata: json(metadata),
         parseError: null,
       },

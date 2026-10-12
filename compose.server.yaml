@@ -14,6 +14,9 @@ services:
     mem_limit: 768m
   agent:
     image: ai-video-platform-agent:${RELEASE_TAG:-latest}
+    build:
+      args:
+        PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     mem_limit: 512m
   postgres:
     mem_limit: 512m

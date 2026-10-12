@@ -1,7 +1,20 @@
+import { meteredStream } from "@/lib/metered-stream";
 import { meteredCall } from "@/lib/metering";
 import { billingRoute } from "@/lib/billing";
 import { accountRoute } from "@/lib/accounts";
 import { teamRoute } from "@/lib/teams";
+import { conversationSnapshot } from "@/lib/agent";
+import { conversationEvents } from "@/lib/events";
+import { recordRunEvent } from "@/lib/run-events";
+import { fileAccess, scopedAccess, scopedFilter } from "@/lib/access";
+import {
+  createAnalysis,
+  importVideo,
+  saveToProduct,
+  readContent,
+  retryAnalysis,
+} from "@/lib/attachments";
+import { webSearch } from "@/lib/search";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -11,6 +24,7 @@ import {
   authenticate,
   productAccess,
   requireHuman,
+  requirePlatform,
   requireScope,
   resourceFilter,
 } from "@/lib/auth";
@@ -25,6 +39,7 @@ import {
   keyAction,
   listKeys,
   listResources,
+  ownedKey,
   resourceDetail,
   saveKey,
   saveResource,
@@ -78,7 +93,7 @@ async function handle(
     if (group === "openapi.json" && method === "GET") return ok(openapi());
     if (group === "health" && method === "GET") {
       await db.$queryRaw`SELECT 1`;
-      return ok({ status: "ok", version: "1.2.0" });
+      return ok({ status: "ok", version: "1.3.0" });
     }
     if (group === "auth") {
       const response = await accountRoute(req, id, body);
@@ -120,6 +135,7 @@ async function handle(
         const d = z
           .object({
             invocationId: z.string().min(1).max(200),
+            stream: z.boolean().default(false),
             channelId: z.string(),
             input: z.object({
               model: z.string(),
@@ -129,6 +145,15 @@ async function handle(
             }),
           })
           .parse(body);
+        if (d.stream)
+          return await withTeam(a.teamId, () =>
+            meteredStream(
+              a,
+              "agent:" + a.id + ":" + d.invocationId,
+              d.channelId,
+              d.input,
+            ),
+          );
         return ok(
           await withTeam(a.teamId, () =>
             meteredCall(
@@ -158,70 +183,16 @@ async function handle(
             status: run.status,
             stopRequested: run.stopRequested,
           });
-        if (method === "POST") {
-          const event = z
-            .object({
-              type: z.enum([
-                "heartbeat",
-                "tool",
-                "complete",
-                "paused",
-                "failed",
-              ]),
-              text: z.string().max(100000).optional(),
-              tool: z.string().max(200).optional(),
-            })
-            .parse(body);
-          if (run.stopRequested) return ok({ stopRequested: true });
-          if (event.type === "heartbeat")
-            await db.agentRun.update({
-              where: { id: run.id },
-              data: { leaseUntil: new Date(Date.now() + 90000) },
-            });
-          else if (event.type === "tool")
-            await db.auditEvent.create({
-              data: {
-                teamId: run.teamId,
-                actorId: run.id,
-                actorType: "agent",
-                action: "agent.tool",
-                entityId: run.id,
-                productId: run.productIds[0],
-                data: json({
-                  tool: event.tool,
-                  text: redact(event.text ?? ""),
-                }),
-              },
-            });
-          else
-            await db.$transaction(async (tx) => {
-              const updated = await tx.agentRun.updateMany({
-                where: { id: run.id, status: "running", stopRequested: false },
-                data: {
-                  status:
-                    event.type === "complete"
-                      ? "completed"
-                      : event.type === "paused"
-                        ? "paused"
-                        : "failed",
-                  result: event.text,
-                  error:
-                    event.type === "failed" ? String(redact(event.text)) : null,
-                  leaseUntil: null,
-                },
-              });
-              if (updated.count && event.text)
-                await tx.message.create({
-                  data: {
-                    teamId: run.teamId,
-                    conversationId: run.conversationId,
-                    role: "assistant",
-                    text: String(redact(event.text)),
-                  },
-                });
-            });
-          return ok({ ok: true });
-        }
+        if (method === "POST")
+          return ok(
+            await withTeam(run.teamId, () =>
+              recordRunEvent(
+                action,
+                req.headers.get("x-run-token") ?? "",
+                body,
+              ),
+            ),
+          );
       }
       throw new HttpError(404, "内部接口不存在");
     }
@@ -250,13 +221,34 @@ async function handle(
           return ok(result);
         }
       }
-      const create = (fn: Parameters<typeof idempotent>[3]) =>
-        idempotent(
+
+      const create = async (fn: Parameters<typeof idempotent>[3]) => {
+        // Authorization must run on every request, including idempotent replays.
+        if (group === "api-keys") requireHuman(actor);
+        else if (group === "channels") requirePlatform(actor);
+        else if (["members", "channels"].includes(group)) {
+          requireHuman(actor);
+          requireScope(actor, "admin");
+        } else
+          requireScope(
+            actor,
+            group === "production-batches" || action === "overview"
+              ? "generate"
+              : "write",
+          );
+        if (body?.productId) productAccess(actor, body.productId);
+        if (body?.conversationId)
+          await conversationAccess(actor, body.conversationId);
+        const result = await idempotent(
           actor,
           req.headers.get("idempotency-key"),
           { method, path: url.pathname, body },
           fn,
         );
+        if (group === "api-keys")
+          await ownedKey(actor, (result as { id: string }).id);
+        return result;
+      };
       if (group === "auth" && id === "me" && method === "GET") return ok(actor);
       if (group === "resources" && id && method === "GET")
         return ok(await resourceDetail(actor, id));
@@ -371,9 +363,40 @@ async function handle(
         if (method === "POST" && !id)
           return ok(await create((tx) => initiateUpload(actor, body, tx)), 201);
         if (id) {
-          const file = await db.fileObject.findUnique({ where: { id } });
-          assert(file, 404, "文件不存在");
-          productAccess(actor, file.productId);
+          const file = await fileAccess(actor, id);
+          if (method === "GET" && action === "content")
+            return ok(
+              await readContent(
+                actor,
+                id,
+                Number(url.searchParams.get("cursor") ?? 0),
+                Number(url.searchParams.get("limit") ?? 8000),
+              ),
+            );
+          if (method === "POST" && action === "analyses")
+            return ok(
+              await create((tx) =>
+                createAnalysis(
+                  actor,
+                  id,
+                  z
+                    .object({ prompt: z.string().max(30000).default("") })
+                    .parse(body).prompt,
+                  tx,
+                ),
+              ),
+              202,
+            );
+          if (method === "GET" && action === "analyses")
+            return ok({
+              items: await db.fileAnalysis.findMany({
+                where: { fileId: id },
+                orderBy: { createdAt: "desc" },
+                take: 20,
+              }),
+            });
+          if (method === "POST" && action === "save-to-product")
+            return ok(await create((tx) => saveToProduct(actor, id, body, tx)));
           if (method === "POST" && action === "upload") {
             requireScope(actor, "write");
             assert(file.status === "pending", 409, "文件已完成上传");
@@ -404,6 +427,13 @@ async function handle(
               headers: { "Content-Type": file.mime },
             });
           }
+          if (
+            method === "POST" &&
+            action === "retry-parse" &&
+            file.mime.startsWith("video/") &&
+            (await db.fileAnalysis.count({ where: { fileId: id } }))
+          )
+            return ok(await create((tx) => retryAnalysis(actor, id, tx)), 202);
           if (method === "POST" && action === "retry-parse") {
             requireScope(actor, "write");
             assert(
@@ -421,6 +451,7 @@ async function handle(
                 const job = await tx.job.create({
                   data: {
                     kind: "parse",
+                    conversationId: file.conversationId,
                     productId: file.productId,
                     input: { fileId: id },
                   },
@@ -449,17 +480,21 @@ async function handle(
           const productId = url.searchParams.get("productId");
           if (productId) productAccess(actor, productId);
           const page = Math.max(
+            1,
+            Math.floor(Number(url.searchParams.get("page")) || 1),
+          );
+          const limit = Math.min(
+            100,
+            Math.max(
               1,
-              Math.floor(Number(url.searchParams.get("page")) || 1),
+              Math.floor(Number(url.searchParams.get("limit")) || 100),
             ),
-            limit = Math.min(
-              100,
-              Math.max(
-                1,
-                Math.floor(Number(url.searchParams.get("limit")) || 100),
-              ),
-            );
+          );
           const where = {
+            ...(await scopedFilter(actor)),
+            ...(url.searchParams.get("conversationId")
+              ? { conversationId: url.searchParams.get("conversationId")! }
+              : {}),
             ...(productId
               ? { productId }
               : actor.productIds.length
@@ -526,10 +561,11 @@ async function handle(
             include: { batch: true },
           });
           assert(job, 404, "任务不存在");
-          productAccess(actor, job.productId);
+          await scopedAccess(actor, job);
           if (method === "GET")
             return ok({
               ...job,
+              input: redact(job.input),
               events: await db.auditEvent.findMany({
                 where: { entityId: id },
                 orderBy: { createdAt: "asc" },
@@ -623,6 +659,7 @@ async function handle(
           return ok({
             items: await db.job.findMany({
               where: {
+                ...(await scopedFilter(actor)),
                 ...(productId
                   ? { productId }
                   : actor.productIds.length
@@ -635,7 +672,12 @@ async function handle(
           });
         }
       }
+      if (group === "tools" && id === "web-search" && method === "POST")
+        return ok(
+          await webSearch(actor, body, req.headers.get("idempotency-key")),
+        );
       if (group === "conversations") {
+        requireScope(actor, "read");
         if (!id && method === "POST")
           return ok(
             await create((tx) => createConversation(actor, body, tx)),
@@ -656,32 +698,20 @@ async function handle(
           });
         if (id) {
           await conversationAccess(actor, id);
+          if (method === "GET" && action === "events")
+            return await conversationEvents(req, id);
+          if (method === "POST" && action === "imports")
+            return ok(
+              await create((tx) => importVideo(actor, id, body, tx)),
+              202,
+            );
           if (method === "POST" && action === "messages")
             return ok(
               await create((tx) => sendMessage(actor, id, body, tx)),
               202,
             );
           if (method === "GET")
-            return ok(
-              await db.conversation.findUnique({
-                where: { id },
-                include: {
-                  messages: { orderBy: { createdAt: "asc" } },
-                  runs: {
-                    select: {
-                      id: true,
-                      status: true,
-                      error: true,
-                      result: true,
-                      createdAt: true,
-                      updatedAt: true,
-                    },
-                    orderBy: { createdAt: "desc" },
-                    take: 10,
-                  },
-                },
-              }),
-            );
+            return ok(await conversationSnapshot(actor, id));
         }
       }
       if (
@@ -742,21 +772,13 @@ async function handle(
     });
   } catch (e) {
     const status =
-      e instanceof HttpError
-        ? e.status
-        : e instanceof z.ZodError
-          ? 422
-          : (e as any)?.code === "P2002"
-            ? 409
-            : 500;
+      e instanceof HttpError ? e.status : e instanceof z.ZodError ? 422 : 500;
     const message =
       e instanceof z.ZodError
         ? e.issues.map((i) => i.path.join(".") + ": " + i.message).join("; ")
         : e instanceof HttpError
           ? e.message
-          : (e as any)?.code === "P2002"
-            ? "记录已存在或请求冲突，请刷新后重试"
-            : "服务暂时不可用";
+          : "服务暂时不可用";
     if (status === 500)
       console.error(
         JSON.stringify({

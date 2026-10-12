@@ -2,13 +2,17 @@ import { strict as assert } from "node:assert";
 import { randomUUID } from "node:crypto";
 import { db } from "../src/lib/db";
 import { reserveSubmission, providerResult } from "../src/worker/lifecycle";
+import { rateLine } from "../src/lib/billing";
 import { refreshBatch, decideBatch } from "../src/lib/production";
 import { canonical, digest, encrypt } from "../src/lib/security";
 import type { Actor } from "../src/lib/auth";
 async function main() {
   const user = await db.user.findFirstOrThrow({ where: { role: "admin" } });
   const actor: Actor = {
- teamId:"legacy-team",teamName:"原团队",teamRole:"owner",platformAdmin:true,
+    teamId: "legacy-team",
+    teamName: "原团队",
+    teamRole: "owner",
+    platformAdmin: true,
     id: user.id,
     userId: user.id,
     name: user.name,
@@ -62,7 +66,22 @@ async function main() {
       where: { id: { in: jobs.map((j) => j.id) } },
       data: { status: "cancelled", leaseUntil: null },
     });
+    await db.purchaseRate.create({
+      data: {
+        channelId: channel.id,
+        model: "test",
+        kind: "video",
+        unit: "request",
+        rate: 0,
+        version: 1,
+        basis: "No-provider recovery test",
+        createdBy: user.id,
+      },
+    });
+    const line = await rateLine(channel.id, "test", "video");
     const snapshot = {
+      quoteExpiresAt: new Date(Date.now() + 600000).toISOString(),
+      quoteLines: [line],
       entries: [
         {
           channelId: channel.id,

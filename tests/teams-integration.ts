@@ -6,8 +6,11 @@ import { sendSms, consumeSms } from "../src/lib/sms";
 import { reserveUsage, settleUsage } from "../src/lib/billing";
 const base = process.env.APP_URL!;
 assert(
-  base === "http://127.0.0.1:3002" &&
-    process.env.DATABASE_URL?.endsWith("/frameflow_teams"),
+  (base === "http://127.0.0.1:3002" &&
+    process.env.DATABASE_URL?.endsWith("/frameflow_teams")) ||
+    (process.env.ALLOW_LOCAL_REVIEW_TESTS === "1" &&
+      base === "http://127.0.0.1:3000" &&
+      process.env.DATABASE_URL?.includes("127.0.0.1:55432/aivideo")),
   "Only isolated test database permitted",
 );
 let checked = 0;
@@ -336,6 +339,13 @@ async function main() {
     password: "new-password-123",
   });
   // Provider transport is mocked only in this isolated test process; production has no test code.
+  for (const name of [
+    "SMS_ACCESS_KEY_ID",
+    "SMS_ACCESS_KEY_SECRET",
+    "SMS_SIGN_NAME",
+    "SMS_TEMPLATE_CODE",
+  ])
+    process.env[name] = "mock-only";
   const originalFetch = global.fetch;
   let delivered = "";
   global.fetch = async (_url: any, init: any) => {

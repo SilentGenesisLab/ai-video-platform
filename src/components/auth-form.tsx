@@ -31,7 +31,9 @@ async function request(path: string, data: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  const b = await r.json();
+  const b = await r.json().catch(() => {
+    throw new Error("登录服务暂时不可用，请稍后重试");
+  });
   if (!r.ok) throw new Error(b.error?.message ?? "请求失败，请重试");
   return b;
 }

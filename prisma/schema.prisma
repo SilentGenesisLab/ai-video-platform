@@ -91,6 +91,7 @@ model Channel {
   enabled Boolean @default(true)
   concurrency Int @default(3)
   models Json
+  options Json @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -114,12 +115,13 @@ model ProductionBatch {
   jobs Job[]
 }
 model Job {
+  conversationId String?
   teamId String @default("legacy-team")
   @@index([teamId])
   id String @id @default(uuid())
   batchId String?
   batch ProductionBatch? @relation(fields: [batchId], references: [id])
-  productId String
+  productId String?
   planId String?
   kind String
   status String @default("queued")
@@ -137,6 +139,7 @@ model Job {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([status, updatedAt])
+  @@index([conversationId])
 }
 model Outbox {
   id String @id @default(uuid())
@@ -151,7 +154,9 @@ model FileObject {
   teamId String @default("legacy-team")
   @@index([teamId])
   id String @id @default(uuid())
-  productId String
+  productId String?
+  conversationId String?
+  sourceFileId String?
   name String
   key String @unique
   mime String
@@ -165,6 +170,7 @@ model FileObject {
   createdBy String
   createdAt DateTime @default(now())
   @@index([productId])
+  @@index([conversationId])
 }
 model AuditEvent {
   teamId String @default("legacy-team")
@@ -204,6 +210,9 @@ model Conversation {
   runs AgentRun[]
 }
 model Message {
+  attachmentIds String[] @default([])
+  runId String?
+  status String @default("completed")
   teamId String @default("legacy-team")
   @@index([teamId])
   id String @id @default(uuid())
@@ -214,6 +223,10 @@ model Message {
   createdAt DateTime @default(now())
 }
 model AgentRun {
+  attempt Int @default(0)
+  attachmentIds String[] @default([])
+  inputJobIds String[] @default([])
+  searchCount Int @default(0)
   teamId String @default("legacy-team")
   @@index([teamId])
   id String @id @default(uuid())
@@ -235,6 +248,51 @@ model AgentRun {
   updatedAt DateTime @updatedAt
 }
 
+model AgentEvent {
+  teamId String @default("legacy-team")
+  @@index([teamId])
+  seq BigInt @id @default(autoincrement())
+  conversationId String
+  runId String?
+  eventKey String @unique
+  type String
+  data Json
+  createdAt DateTime @default(now())
+  @@index([conversationId, seq])
+}
+model FileAnalysis {
+  teamId String @default("legacy-team")
+  @@index([teamId])
+  id String @id @default(uuid())
+  fileId String
+  fingerprint String @unique
+  jobId String @unique
+  model String
+  prompt String
+  promptVersion String @default("video-v1")
+  status String @default("queued")
+  result Json?
+  rawResponse Json?
+  usage Json?
+  error String?
+  providerFileId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([fileId, createdAt])
+}
+model SearchRecord {
+  teamId String @default("legacy-team")
+  @@index([teamId])
+  id String @id @default(uuid())
+  actorId String
+  runId String?
+  conversationId String?
+  requestKey String @unique
+  query String
+  status String @default("running")
+  result Json?
+  createdAt DateTime @default(now())
+}
 model Team {
  id String @id @default(uuid())
  name String

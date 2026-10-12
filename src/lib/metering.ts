@@ -8,6 +8,53 @@ import {
   settleUsage,
   usageFromResult,
 } from "./billing";
+
+/** Meter non-chat providers without changing their native request/response shapes. */
+export async function meteredOperation<T>(
+  actor: { teamId: string; userId: string },
+  invocationId: string,
+  channelId: string,
+  kind: string,
+  model: string,
+  input: any,
+  call: () => Promise<T>,
+): Promise<T> {
+  const channel = await db.channel.findUnique({ where: { id: channelId } });
+  assert(
+    channel?.enabled && (channel.models as any)[kind]?.includes(model),
+    422,
+    "模型能力不可用",
+  );
+  const hash = digest(canonical({ channelId, kind, model, input }));
+  let usage = await db.usageRecord.findUnique({ where: { invocationId } });
+  if (usage) {
+    assert(usage.requestHash === hash, 409, "调用标识对应的输入已改变");
+    if (usage.response) return usage.response as T;
+    assert(usage.status === "reserved", 409, "调用结果待确认，请先对账");
+  } else {
+    const line = await rateLine(channelId, model, kind, input, input);
+    usage = await db.$transaction((tx) =>
+      reserveUsage(tx, actor, invocationId, line, hash),
+    );
+  }
+  const claimed = await db.usageRecord.updateMany({
+    where: { id: usage.id, status: "reserved" },
+    data: { status: "submitting" },
+  });
+  assert(claimed.count === 1, 409, "调用正在执行或等待对账");
+  try {
+    const result = await call();
+    await db.usageRecord.update({
+      where: { id: usage.id },
+      data: { response: json(result) },
+    });
+    await usageFromResult(usage.id, result, true);
+    return result;
+  } catch (e) {
+    await settleUsage(usage.id, null);
+    throw e;
+  }
+}
 export async function meteredCall(
   actor: { teamId: string; userId: string },
   invocationId: string,
