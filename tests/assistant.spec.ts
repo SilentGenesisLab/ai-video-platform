@@ -419,19 +419,98 @@ test("ASSISTANT-07 media placeholders update to results without resubmission", a
   expect(reads).toBeGreaterThan(1);
 });
 
-
-test("ASSISTANT-08 live Agent edits selected concept instead of creating a copy",async({page})=>{
-  test.skip(process.env.E2E_LIVE_AGENT !== "1" || !process.env.APP_URL?.includes("127.0.0.1"),"Explicit local real model editing test");
+test("ASSISTANT-08 live Agent edits selected concept instead of creating a copy", async ({
+  page,
+}) => {
+  test.skip(
+    process.env.E2E_LIVE_AGENT !== "1" ||
+      !process.env.APP_URL?.includes("127.0.0.1"),
+    "Explicit local real model editing test",
+  );
   await login(page);
-  const p=await api(page,"/products",{title:"编辑验收 "+randomUUID(),content:{}});
-  const ref=await api(page,"/concepts",{title:"引用目标",productId:p.id,content:{hook:"原钩子",idea:"保留的一句话创意",structure:"保留的结构",emotion:"保留的情绪",selfReview:"保留的评审"}});
-  const c=await api(page,"/conversations",{title:"定向修改验收",productId:p.id});
-  await api(page,`/conversations/${c.id}/messages`,{text:"请使用API修改这次引用的创意：仅把 hook 字段改成 精准修改后的钩子，严格保留名称、其他字段和产品归属，通过PATCH保存新版本，不新建任何创意，不生成媒体，不搜索。",referenceIds:[ref.id]});
-  await expect.poll(async()=> (await api(page,"/concepts/"+ref.id)).content.hook,{timeout:120000,intervals:[1000,2000]}).toBe("精准修改后的钩子");
-  const latest=await api(page,"/concepts/"+ref.id);
-  expect(latest.version).toBe(ref.version+1);
+  const p = await api(page, "/products", {
+    title: "编辑验收 " + randomUUID(),
+    content: {},
+  });
+  const ref = await api(page, "/concepts", {
+    title: "引用目标",
+    productId: p.id,
+    content: {
+      hook: "原钩子",
+      idea: "保留的一句话创意",
+      structure: "保留的结构",
+      emotion: "保留的情绪",
+      selfReview: "保留的评审",
+    },
+  });
+  const c = await api(page, "/conversations", {
+    title: "定向修改验收",
+    productId: p.id,
+  });
+  await api(page, `/conversations/${c.id}/messages`, {
+    text: "请使用API修改这次引用的创意：仅把 hook 字段改成 精准修改后的钩子，严格保留名称、其他字段和产品归属，通过PATCH保存新版本，不新建任何创意，不生成媒体，不搜索。",
+    referenceIds: [ref.id],
+  });
+  await expect
+    .poll(async () => (await api(page, "/concepts/" + ref.id)).content.hook, {
+      timeout: 120000,
+      intervals: [1000, 2000],
+    })
+    .toBe("精准修改后的钩子");
+  const latest = await api(page, "/concepts/" + ref.id);
+  expect(latest.version).toBe(ref.version + 1);
   expect(latest.content.idea).toBe(ref.content.idea);
   expect(latest.title).toBe(ref.title);
-  const list=await api(page,"/concepts?productId="+p.id);
+  const list = await api(page, "/concepts?productId=" + p.id);
   expect(list.items).toHaveLength(1);
+});
+
+test("ASSISTANT-09 plan storyboard asset and script editors share reference collaboration", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.APP_URL?.includes("127.0.0.1"),
+    "Local module fixtures",
+  );
+  await login(page);
+  const p = await api(page, "/products", {
+    title: "多模块引用 " + randomUUID(),
+    content: {},
+  });
+  const plan = await api(page, "/plans", {
+    title: "方案引用验收",
+    productId: p.id,
+    content: {},
+  });
+  const board = await api(page, "/storyboards", {
+    title: "分镜引用验收",
+    productId: p.id,
+    planId: plan.id,
+    content: { shots: [] },
+  });
+  const asset = await api(page, "/assets", {
+    title: "资产引用验收",
+    productId: p.id,
+    planId: plan.id,
+    content: {},
+  });
+  const script = await api(page, "/scripts", {
+    title: "脚本引用验收",
+    productId: p.id,
+    planId: plan.id,
+    content: {},
+  });
+  for (const [section, item] of [
+    ["creative", plan],
+    ["creative", board],
+    ["assets", asset],
+    ["video", script],
+  ] as const) {
+    await page.goto(`/studio/${section}?id=${item.id}`);
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText(item.title);
+    await dialog.getByRole("button", { name: "AI 协作", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByLabel("编辑上下文")).toContainText(item.title);
+  }
 });

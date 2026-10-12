@@ -11,3 +11,9 @@
 验证：42 个单元测试、10 个 Python 流式/引用测试；事务回滚集成检查引用版本、跨产品拒绝、自动报价、图片立即排队、视频不排队及会话恢复，不调用付费媒体。Playwright 验证引用添加/移除/刷新/请求参数，以及占位转图片结果；真实 DeepSeek 修改指定创意为新版本，保留其余字段且不新建副本。
 
 迁移只新增 Message.contextRefs JSONB 默认 []，兼容旧消息。
+
+## 上线记录
+
+2026-10-13 部署 v1.4.2-collaboration-45e0a32，HTTPS 健康检查返回 1.4.2，web/worker/agent 均正常运行。Message.contextRefs 兼容迁移已应用。备份位于 /opt/ai-video-platform/backups/pre-v1.4.2-45e0a32。
+
+增加四模块编辑器 Playwright 验收：策划案、工业分镜、资产及制作脚本保存后加入同一引用上下文。媒体 UI 测试使用受控结果响应，不购买供应商图片/视频。
