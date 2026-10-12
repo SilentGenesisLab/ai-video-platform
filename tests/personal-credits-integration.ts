@@ -138,7 +138,7 @@ async function main() {
     "estimated",
   );
   pass("fallback invoice clearly identifies estimated cost");
-  const invoice = await billingRoute(ma, ["billing", "usage"], "GET", {});
+  const invoice: any = await billingRoute(ma, ["billing", "usage"], "GET", {});
   const billed = invoice.items.find((u: any) => u.id === usage.id);
   assert.equal(billed.payerUserId, member.id);
   assert.equal(billed.payerKind, "user");
