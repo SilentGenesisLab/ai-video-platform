@@ -1,6 +1,6 @@
 {
   "name": "ai-video-platform",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
@@ -16,7 +16,8 @@
     "skill:build": "tsx scripts/build-skill.ts",
     "test:recovery": "tsx --env-file=.env tests/recovery.ts",
     "test:browser": "playwright test",
-    "format": "prettier --write src tests scripts agent/*.md docs public/skills/ai-video-platform README.md"
+    "format": "prettier --write src tests scripts agent/*.md docs public/skills/ai-video-platform README.md",
+    "test:teams": "tsx --env-file=.env tests/teams-integration.ts && tsx --env-file=.env tests/metering-integration.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

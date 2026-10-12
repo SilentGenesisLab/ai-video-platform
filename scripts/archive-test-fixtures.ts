@@ -4,7 +4,7 @@ import { roles,type Actor } from '../src/lib/auth';
 import type { Kind } from '../src/lib/contracts';
 async function main(){
  const user=await db.user.findUniqueOrThrow({where:{email:process.env.ADMIN_EMAIL!}});
- const actor:Actor={id:user.id,userId:user.id,name:user.name,type:'human',role:user.role,scopes:roles[user.role],productIds:[]};
+ const actor:Actor={teamId:"legacy-team",teamName:"原团队",teamRole:"owner",platformAdmin:true,id:user.id,userId:user.id,name:user.name,type:'human',role:user.role,scopes:roles[user.role],productIds:[]};
  const products=await db.resource.findMany({where:{kind:'product',createdBy:user.id,OR:[{title:{startsWith:'集成验收 · '}},{title:{startsWith:'浏览器验收 · '}}]}});
  const ids=products.map(p=>p.id);
  const resources=await db.resource.findMany({where:{status:{not:'archived'},OR:[{id:{in:ids}},{productId:{in:ids}}]}});

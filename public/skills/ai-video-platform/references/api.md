@@ -1,4 +1,4 @@
-# API reference notes · v1.2.0
+# API reference notes · v1.3.0
 
 All business endpoints start with `/api/v1`. Use JSON request bodies, Bearer authentication, and an 8–200 character `Idempotency-Key` header on creation requests. Collection reads return `{items, total?, page?, limit?}`. Resource updates use PATCH and include `baseVersion`.
 
@@ -65,3 +65,13 @@ Query `/production-batches/{id}` and `/jobs/{id}`. Completed job `result.files` 
 - 409: reread current content and reconcile, or retain the original request body for an idempotency retry.
 - 422: inspect field validation errors and adjust parameters.
 - 429/5xx: bounded backoff on reads; for writes reuse the original idempotency key. Never infer an upstream generation failed to start from a network timeout.
+
+## Quote before submission
+
+```js
+const quote = await platform('/billing/quotes', 'POST', batch);
+// Present quote.amount, quote.lines and quote.expiresAt before submitting.
+const result = await platform('/production-batches', 'POST', {...batch, quoteId: quote.id});
+```
+
+API keys cannot use `/teams`, `/invitations`, `/platform`, phone binding, human approvals or key management. The website's team switch does not change your key's team. `auth/me` includes `teamId`, `teamName`, `teamRole`, `scopes` and product boundaries. Capture that context before using existing object IDs.

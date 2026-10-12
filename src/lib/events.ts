@@ -35,9 +35,19 @@ export async function appendEvent(
 ) {
   // All event writers hold this lock so committed cursor order cannot overtake an earlier transaction.
   await tx.$queryRaw`SELECT id FROM "Conversation" WHERE id = ${conversationId} FOR UPDATE`;
+  const conversation = await tx.conversation.findUniqueOrThrow({
+    where: { id: conversationId },
+  });
   const event = await tx.agentEvent.upsert({
     where: { eventKey },
-    create: { conversationId, runId, eventKey, type, data: json(data) },
+    create: {
+      teamId: conversation.teamId,
+      conversationId,
+      runId,
+      eventKey,
+      type,
+      data: json(data),
+    },
     update: {},
   });
   return { ...event, seq: event.seq.toString() };

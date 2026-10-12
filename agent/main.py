@@ -66,6 +66,7 @@ class State(TypedDict, total=False):
     paused: bool
     tool_calls: list
     tool_index: int
+    pause_reason: str
     pending_tools: bool
     waiting_jobs: list
 
@@ -117,7 +118,16 @@ async def execute_run(client: httpx.AsyncClient, run: dict, saver):
                 await event("message_start", messageId=mid)
                 started = True
             await event("delta", messageId=mid, text=text)
-        message = await stream_completion(client, run["model"]["baseUrl"].rstrip("/") + "/chat/completions", {"Authorization": "Bearer " + run["model"]["apiKey"]}, {"model": run["model"]["model"], "messages": state["messages"], "tools": TOOLS, "max_tokens": 8192}, emit, stopped)
+        payload = {"model": run["model"]["model"], "messages": state["messages"], "tools": TOOLS, "max_tokens": 8192}
+        identity = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        try:
+            message = await stream_completion(client, BASE + "/api/v1/internal/agent-model", {"X-Service-Secret": SERVICE, "X-Run-Token": run["token"]}, {"invocationId": identity, "channelId": run["model"]["channelId"], "input": payload}, emit, stopped)
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code in (402, 409, 422):
+                body = await error.response.aread()
+                return {"paused": True, "pause_reason": json.loads(body).get("error", {}).get("message", "积分或采购价需要处理")}
+            raise
+
         if started:
             await event("message_end", messageId=mid)
         return {"messages": state["messages"] + [message], "rounds": state.get("rounds", 0) + 1, "tool_calls": message.get("tool_calls", []), "tool_index": 0, "pending_tools": False, "waiting_jobs": []}
@@ -207,9 +217,9 @@ async def execute_run(client: httpx.AsyncClient, run: dict, saver):
         if final.get("waiting_jobs"):
             await event("waiting_inputs", jobIds=final["waiting_jobs"])
             return
-        paused = final.get("rounds", 0) >= 30 and final["messages"][-1]["role"] == "tool"
+        paused = final.get("paused", False) or (final.get("rounds", 0) >= 30 and final["messages"][-1]["role"] == "tool")
         last = final["messages"][-1]
-        text = "已完成 30 轮工具调用，执行进度已保存。可点击继续。" if paused else last.get("content") or "本轮执行已完成，请查看相关成果。"
+        text = (final.get("pause_reason") or "已暂停并保存执行进度。可点击继续。") if paused else last.get("content") or "本轮执行已完成，请查看相关成果。"
         await event("paused" if paused else "complete", text=text)
     except asyncio.CancelledError:
         if not stopped.is_set():

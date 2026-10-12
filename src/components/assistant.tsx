@@ -28,6 +28,7 @@ type Binding = {
   productId?: string;
   planId?: string;
   userId?: string;
+  teamId?: string;
   readOnly: boolean;
 };
 const AssistantContext = createContext<any>(null);
@@ -59,7 +60,7 @@ export function AssistantProvider({
       {children}
       {used && (
         <AssistantPanel
-          key={binding.userId ?? "loading"}
+          key={`${binding.userId ?? "loading"}:${binding.teamId ?? ""}`}
           open={open}
           close={() => setOpen(false)}
           binding={binding}
@@ -217,7 +218,8 @@ function AssistantPanel({
   const cursor = useRef("0"),
     loaded = useRef(false),
     inFlightConversation = useRef<Promise<string> | null>(null);
-  const storageKey = "assistant:" + (binding.userId ?? "unknown");
+  const storageKey =
+    "assistant:" + (binding.userId ?? "unknown") + ":" + (binding.teamId ?? "");
   const run = conversation?.runs?.[0],
     active = run && activeStates.includes(run.status);
   const readOnly = binding.readOnly || !hydrated;

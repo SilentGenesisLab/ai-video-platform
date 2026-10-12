@@ -40,14 +40,22 @@ export async function recordRunEvent(
     const run = await tx.agentRun.findUniqueOrThrow({ where: { id } });
     assert(digest(token) === run.tokenHash, 401, "此执行实例的租约已失效");
     const owner = await tx.user.findUnique({ where: { id: run.ownerId } });
+    const membership = await tx.teamMember.findUnique({
+      where: { teamId_userId: { teamId: run.teamId, userId: run.ownerId } },
+    });
+    const team = await tx.team.findUnique({ where: { id: run.teamId } });
     const source = run.sourceKeyId
       ? await tx.apiKey.findUnique({ where: { id: run.sourceKeyId } })
       : null;
     if (
       !owner?.active ||
-      !["admin", "editor"].includes(owner.role) ||
+      !membership?.active ||
+      !team ||
+      team.archived ||
+      !["owner", "admin", "editor"].includes(membership?.role ?? "") ||
       (run.sourceKeyId &&
         (!source?.enabled ||
+          source.teamId !== run.teamId ||
           source.revokedAt ||
           (source.expiresAt && source.expiresAt <= new Date()) ||
           !["read", "write"].every((scope) => source.scopes.includes(scope)) ||

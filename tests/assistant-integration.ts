@@ -28,6 +28,10 @@ async function main() {
     role: "admin",
     scopes: roles.admin,
     productIds: [],
+    teamId: "legacy-team",
+    teamName: "Review",
+    teamRole: "owner",
+    platformAdmin: true,
   };
   const c = await db.conversation.create({
     data: { ownerId: user.id, title: "助手接口验收 · 流恢复与私有附件" },

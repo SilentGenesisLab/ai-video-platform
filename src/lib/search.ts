@@ -1,3 +1,4 @@
+import { meteredOperation } from "./metering";
 import { z } from "zod";
 import { db } from "./db";
 import { type Actor, requireScope } from "./auth";
@@ -12,6 +13,7 @@ export async function webSearch(
   key: string | null,
 ) {
   requireScope(actor, "write");
+  requireScope(actor, "generate");
   assert(
     process.env.ASSISTANT_SEARCH_ENABLED !== "false",
     503,
@@ -31,7 +33,7 @@ export async function webSearch(
       count: z.number().int().min(1).max(10).default(10),
     })
     .parse(input);
-  const requestKey = digest(actor.id + ":" + key);
+  const requestKey = digest(actor.teamId + ":" + actor.id + ":" + key);
   const old = await db.searchRecord.findUnique({ where: { requestKey } });
   if (old) {
     assert(old.query === canonical(args), 409, "相同幂等键对应不同搜索");
@@ -103,24 +105,35 @@ export async function webSearch(
   let result: any;
   try {
     result = await withChannel(channel, async (signal) => {
-      const r = await fetch(
-        channel.baseUrl.replace(/\/$/, "") + "/v1/web-search",
-        {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + decrypt(channel.ciphertext),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ ...args, summary: true }),
-          signal,
+      const body: any = await meteredOperation(
+        actor,
+        "search:" + record.id,
+        channel.id,
+        "search",
+        "web-search",
+        args,
+        async () => {
+          const r = await fetch(
+            channel.baseUrl.replace(/\/$/, "") + "/v1/web-search",
+            {
+              method: "POST",
+              headers: {
+                Authorization: "Bearer " + decrypt(channel.ciphertext),
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ ...args, summary: true }),
+              signal,
+            },
+          );
+          assert(r.ok, 502, `博查搜索失败 HTTP ${r.status}`);
+          const body = await r.json();
+          assert(
+            body.code === undefined || body.code === 200,
+            502,
+            "博查搜索返回错误，请检查渠道状态和余额",
+          );
+          return body;
         },
-      );
-      assert(r.ok, 502, `博查搜索失败 HTTP ${r.status}`);
-      const body = await r.json();
-      assert(
-        body.code === undefined || body.code === 200,
-        502,
-        "博查搜索返回错误，请检查渠道状态和余额",
       );
       const sources = (body.data?.webPages?.value ?? [])
         .filter((s: any) => {

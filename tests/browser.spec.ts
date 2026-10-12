@@ -6,8 +6,9 @@ test("human workspace, editing, key onboarding and responsive navigation", async
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto((process.env.APP_URL ?? "http://127.0.0.1:3000") + "/login");
+  await page.getByRole("tab", {name:"邮箱密码"}).click();
   await page.getByLabel("邮箱").fill(process.env.ADMIN_EMAIL!);
-  await page.getByLabel("密码").fill(process.env.ADMIN_PASSWORD!);
+  await page.locator('input[name="password"]').fill(process.env.ADMIN_PASSWORD!);
   await page.getByRole("button", { name: "进入工作台" }).click();
   await expect(page.getByRole("heading", { name: "产品管理." })).toBeVisible();
   await expect(page.locator(".loading")).toHaveCount(0);

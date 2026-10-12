@@ -1,0 +1,10 @@
+ALTER TABLE "AgentEvent" ADD COLUMN "teamId" TEXT NOT NULL DEFAULT 'legacy-team';
+ALTER TABLE "FileAnalysis" ADD COLUMN "teamId" TEXT NOT NULL DEFAULT 'legacy-team';
+ALTER TABLE "SearchRecord" ADD COLUMN "teamId" TEXT NOT NULL DEFAULT 'legacy-team';
+UPDATE "AgentEvent" e SET "teamId" = c."teamId" FROM "Conversation" c WHERE c.id = e."conversationId";
+UPDATE "FileAnalysis" a SET "teamId" = f."teamId" FROM "FileObject" f WHERE f.id = a."fileId";
+UPDATE "SearchRecord" s SET "teamId" = c."teamId" FROM "Conversation" c WHERE c.id = s."conversationId";
+UPDATE "SearchRecord" s SET "teamId" = k."teamId" FROM "ApiKey" k WHERE k.id = s."actorId" AND s."conversationId" IS NULL;
+CREATE INDEX "AgentEvent_teamId_idx" ON "AgentEvent"("teamId");
+CREATE INDEX "FileAnalysis_teamId_idx" ON "FileAnalysis"("teamId");
+CREATE INDEX "SearchRecord_teamId_idx" ON "SearchRecord"("teamId");

@@ -15,6 +15,10 @@ export function openapi() {
     content: { "application/json": { schema: { type: "object" } } },
   };
   const errors = {
+    "402": {
+      description: "Insufficient team credits; pause and retain progress",
+    },
+    "429": { description: "Rate limit" },
     "401": { description: "Authentication required" },
     "403": { description: "Insufficient scope" },
     "409": { description: "Version or idempotency conflict" },
@@ -278,9 +282,170 @@ export function openapi() {
     ["/audit-events", "get", "Read audit events"],
     ["/dashboard", "get", "Scoped counts"],
     ["/members", "get", "List members; admin only"],
-    ["/members", "post", "Create member; admin only", {}],
-    ["/members/{id}", "patch", "Update member; admin only", {}],
   ];
+  const phone = {
+    type: "string",
+    description: "China mainland +86 phone number",
+  };
+  const str = { type: "string" };
+  const obj = (properties: any, required: string[] = []) => ({
+    type: "object",
+    properties,
+    required,
+  });
+  extras.push(
+    [
+      "/auth/login",
+      "post",
+      "Email or phone password login",
+      obj({ email: str, phone, identifier: str, password: str }, ["password"]),
+    ],
+    [
+      "/auth/sms",
+      "post",
+      "Send purpose-bound SMS code; 60s cooldown",
+      obj(
+        { phone, purpose: { enum: ["register", "login", "reset", "bind"] } },
+        ["phone", "purpose"],
+      ),
+    ],
+    [
+      "/auth/register",
+      "post",
+      "Register phone and initial team with 1000 credits",
+      obj(
+        {
+          phone,
+          code: str,
+          name: str,
+          password: { type: "string", minLength: 12, maxLength: 72 },
+        },
+        ["phone", "code", "name", "password"],
+      ),
+    ],
+    [
+      "/auth/otp-login",
+      "post",
+      "Login existing phone account",
+      obj({ phone, code: str }, ["phone", "code"]),
+    ],
+    [
+      "/auth/reset-password",
+      "post",
+      "Reset password and revoke all sessions",
+      obj({ phone, code: str, password: str }, ["phone", "code", "password"]),
+    ],
+    [
+      "/auth/bind-phone",
+      "post",
+      "Bind verified phone to current human account",
+      obj({ phone, code: str }, ["phone", "code"]),
+    ],
+    ["/teams", "get", "List human memberships and balances"],
+    [
+      "/teams",
+      "post",
+      "Create additional team without a credit grant",
+      obj({ name: str }, ["name"]),
+    ],
+    [
+      "/teams/{id}",
+      "patch",
+      "Rename or archive a team",
+      obj({ name: str, archived: { type: "boolean" } }),
+    ],
+    ["/teams/{id}/switch", "post", "Change current human session team", {}],
+    ["/teams/{id}/members", "get", "List team members"],
+    [
+      "/teams/{id}/members/{memberId}",
+      "patch",
+      "Change role or revoke membership immediately",
+      obj({
+        role: { enum: ["admin", "editor", "reviewer", "viewer"] },
+        active: { type: "boolean" },
+      }),
+    ],
+    ["/teams/{id}/invitations", "get", "List team invitations"],
+    [
+      "/teams/{id}/invitations",
+      "post",
+      "Create single-use phone-bound seven-day invitation",
+      obj(
+        { phone, role: { enum: ["admin", "editor", "reviewer", "viewer"] } },
+        ["phone"],
+      ),
+    ],
+    ["/teams/{id}/invitations/{invitationId}", "delete", "Revoke invitation"],
+    ["/invitations/{id}", "get", "Inspect invitation token for matching phone"],
+    ["/invitations/{id}", "post", "Accept invitation; grants no credits", {}],
+    ["/billing/wallet", "get", "Current team balance and frozen credits"],
+    ["/billing/usage", "get", "Team model usage and settlement basis"],
+    ["/billing/ledger", "get", "Immutable team credit ledger"],
+    [
+      "/billing/quotes",
+      "post",
+      "Get ten-minute generation quote; no paid call",
+      z.toJSONSchema(batchInput),
+    ],
+    ["/platform/rates", "get", "Platform admin: procurement price versions"],
+    [
+      "/platform/rates",
+      "post",
+      "Platform admin: append RMB procurement price",
+      obj(
+        {
+          channelId: str,
+          model: str,
+          kind: {
+            enum: [
+              "text",
+              "vision",
+              "image",
+              "video",
+              "audio",
+              "video_understanding",
+              "search",
+            ],
+          },
+          unit: { enum: ["token", "image", "second", "request"] },
+          rate: { type: "number", exclusiveMinimum: 0 },
+          inputRate: { type: "number", minimum: 0 },
+          cachedInputRate: { type: "number", minimum: 0 },
+          resolution: str,
+          supplier: str,
+          pricingParameters: { type: "object", additionalProperties: true },
+          basis: str,
+        },
+        ["channelId", "model", "kind", "unit", "rate", "basis"],
+      ),
+    ],
+    ["/platform/teams", "get", "Platform admin: all team states and wallets"],
+    [
+      "/platform/teams/{id}",
+      "patch",
+      "Platform admin: archive or restore team",
+      obj({ archived: { type: "boolean" } }, ["archived"]),
+    ],
+    [
+      "/platform/credits",
+      "post",
+      "Platform admin: idempotent credit adjustment",
+      obj(
+        { teamId: str, amount: { type: "number" }, reason: str, eventKey: str },
+        ["teamId", "amount", "reason", "eventKey"],
+      ),
+    ],
+    ["/platform/reconcile", "get", "Platform admin: uncertain costs"],
+    [
+      "/platform/reconcile/{id}",
+      "post",
+      "Platform admin: confirmed RMB cost settlement",
+      obj({ costCny: { type: "number", minimum: 0 }, reason: str }, [
+        "costCny",
+        "reason",
+      ]),
+    ],
+  );
   for (const [path, method, summary, schema] of extras) {
     const full = "/api/v1" + path;
     paths[full] = {
@@ -288,9 +453,20 @@ export function openapi() {
       [method]: operation(
         summary,
         schema,
-        path.includes("{id}") ? [param("id")] : [],
+        Array.from(path.matchAll(/\{([^}]+)\}/g), (m) => param(m[1])),
       ),
     };
+  }
+  for (const [path, value] of Object.entries(paths)) {
+    for (const op of Object.values(value as any) as any[]) {
+      if (path.match(/\/auth\/(sms|register|otp-login|login|reset-password)$/))
+        op.security = [];
+      else if (
+        path.match(/\/(teams|invitations|platform|members)(\/|$)/) ||
+        path.endsWith("/auth/bind-phone")
+      )
+        op.security = [{ session: [] }];
+    }
   }
   const fileList = paths["/api/v1/files"] as any;
   fileList.get.parameters = [
@@ -319,9 +495,9 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.2.0",
+      version: "1.3.0",
       description:
-        "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. Business objects are product-scoped; private attachments may instead be conversation-scoped. Industrial storyboards belong to plans.",
+        "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
     },
     servers: [{ url: process.env.APP_URL ?? "http://localhost:3000" }],
     paths,

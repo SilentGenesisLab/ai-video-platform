@@ -1,3 +1,10 @@
+vi.mock("../src/lib/worker-access", () => ({
+  workerActor: async () => ({ teamId: "test", userId: "test" }),
+}));
+vi.mock("../src/lib/metering", () => ({
+  meteredOperation: async (...args: any[]) => args[6](),
+  meteredCall: (...args: any[]) => state.asr(...args),
+}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   file: {} as any,
@@ -23,7 +30,7 @@ vi.mock("../src/lib/db", () => {
         baseUrl: "https://ark.example/api/v3",
         ciphertext: "private",
       }),
-      findFirst: async () => ({ id: "asr" }),
+      findFirst: async () => ({ id: "asr", models: { audio: ["asr"] } }),
     },
   };
   db.$transaction = async (fn: any) => fn(db);

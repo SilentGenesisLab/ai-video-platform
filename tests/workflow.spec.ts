@@ -1,3 +1,5 @@
+import { db } from "../src/lib/db";
+import bcrypt from "bcryptjs";
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -10,6 +12,26 @@ let channels: any[] = [];
 let members: string[] = [];
 let batches: string[] = [];
 const errors = new WeakMap<Page, string[]>();
+async function viewerFixture(
+  page: Page,
+  input: { email: string; name: string; password: string; role: string },
+) {
+  expect(new URL(process.env.DATABASE_URL!).hostname).toBe("127.0.0.1");
+  const actor = await data(page, "/auth/me");
+  const user = await db.user.create({
+    data: {
+      email: input.email,
+      name: input.name,
+      passwordHash: await bcrypt.hash(input.password, 12),
+      role: input.role,
+    },
+  });
+  await db.teamMember.create({
+    data: { teamId: actor.teamId, userId: user.id, role: input.role },
+  });
+  return user;
+}
+
 async function call(page: Page, path: string, method = "GET", data?: unknown) {
   return page.request.fetch(`/api/v1${path}`, {
     method,
@@ -28,8 +50,9 @@ async function login(
   password = process.env.ADMIN_PASSWORD!,
 ) {
   await page.goto("/login");
+  await page.getByRole("tab", { name: "邮箱密码" }).click();
   await page.getByLabel("邮箱", { exact: true }).fill(email);
-  await page.getByLabel("密码", { exact: true }).fill(password);
+  await page.locator('input[name="password"]').fill(password);
   await page.getByRole("button", { name: "进入工作台" }).click();
   await expect(page.getByRole("heading", { name: "产品管理." })).toBeVisible();
   await expect(page.locator(".loading")).toHaveCount(0);
@@ -141,7 +164,7 @@ test.afterEach(async ({ page }) => {
   for (const c of channels)
     await data(page, `/channels/${c.id}`, "PATCH", { ...c, enabled: false });
   for (const id of members)
-    await data(page, `/members/${id}`, "PATCH", { active: false });
+    await db.user.update({ where: { id }, data: { active: false } });
   for (const r of resources.reverse()) {
     const item = await data(page, `/${r.route}/${r.id}`);
     if (item.status !== "archived")
@@ -159,7 +182,7 @@ test("AUTH-01 wrong password, successful login, logout and protected route", asy
   page,
 }) => {
   const email = `e2e-login-${randomUUID()}@example.test`;
-  const member = await data(page, "/members", "POST", {
+  const member = await viewerFixture(page, {
     email,
     name: prefix + " login validation",
     password: randomUUID(),
@@ -168,13 +191,14 @@ test("AUTH-01 wrong password, successful login, logout and protected route", asy
   members.push(member.id);
   await page.getByRole("button", { name: "退出登录" }).click();
   await expect(page).toHaveURL(/\/login$/);
+  await page.getByRole("tab", { name: "邮箱密码" }).click();
   await page.getByLabel("邮箱", { exact: true }).fill(email);
   await page
     .getByLabel("密码", { exact: true })
     .fill("wrong-password-test-only");
   await page.getByRole("button", { name: "进入工作台" }).click();
   await expect(page.locator("form [role=alert]")).toContainText(
-    "邮箱或密码错误",
+    "账号或密码错误",
   );
   await login(page);
   await page.getByRole("button", { name: "退出登录" }).click();
@@ -367,7 +391,10 @@ test("FLOW-01 product to creative, plan, storyboard, asset, script and video rej
       r.url().endsWith("/production-batches") &&
       r.request().method() === "POST",
   );
-  await d.getByRole("button", { name: "提交审批", exact: true }).click();
+  await d.getByRole("button", { name: "获取积分报价", exact: true }).click();
+  await d
+    .getByRole("button", { name: "确认报价并提交审批", exact: true })
+    .click();
   const b = await (await created).json();
   batches.push(b.id);
   expect(b.status).toBe("pending_approval");
@@ -582,23 +609,20 @@ test("GEN-01 switching channel uses that channel's supported model", async ({
   );
   await d.getByLabel("制作类型").selectOption("audio");
   await d.getByLabel("制作提示词").fill("Do not submit this fixture");
-  await expect(d.getByRole("button", { name: "提交生成" })).toBeDisabled();
+  await expect(d.getByRole("button", { name: "获取积分报价" })).toBeDisabled();
   await d.getByRole("button", { name: "取消", exact: true }).click();
 });
 
-test("AUTH-03 password visibility, environment hint and network failure recovery", async ({
+test("AUTH-03 email login, password visibility and network failure recovery", async ({
   page,
 }) => {
   await page.getByRole("button", { name: "退出登录" }).click();
-  const password = page.getByLabel("密码", { exact: true });
+  await page.getByRole("tab", { name: "邮箱密码" }).click();
+  const password = page.locator('input[name="password"]');
   await page.getByRole("button", { name: "显示密码", exact: true }).click();
   await expect(password).toHaveAttribute("type", "text");
   await page.getByRole("button", { name: "隐藏密码", exact: true }).click();
   await expect(password).toHaveAttribute("type", "password");
-  if (new URL(process.env.APP_URL!).hostname === "127.0.0.1")
-    await expect(
-      page.getByRole("link", { name: "前往线上工作台" }),
-    ).toBeVisible();
   await page.route("**/api/v1/auth/login", (r) =>
     r.fulfill({ status: 502, contentType: "text/html", body: "Bad gateway" }),
   );
@@ -734,7 +758,7 @@ test("ROLE-01 viewer reads resources without edit or generation controls", async
   const p = await seed(page);
   const password = randomUUID() + "aA9!";
   const email = `e2e-${randomUUID()}@example.test`;
-  const m = await data(page, "/members", "POST", {
+  const m = await viewerFixture(page, {
     email,
     name: prefix + " viewer",
     password,

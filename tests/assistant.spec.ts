@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 async function login(page: Page) {
   await page.goto("/login");
+  await page.getByRole("tab", { name: "邮箱密码" }).click();
   await page.getByLabel("邮箱", { exact: true }).fill(process.env.ADMIN_EMAIL!);
   await page
     .getByLabel("密码", { exact: true })

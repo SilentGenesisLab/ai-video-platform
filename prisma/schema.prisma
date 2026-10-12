@@ -7,7 +7,9 @@ datasource db {
 }
 model User {
   id String @id @default(uuid())
-  email String @unique
+  email String? @unique
+  phone String? @unique
+  platformAdmin Boolean @default(false)
   name String
   passwordHash String
   role String @default("editor")
@@ -17,6 +19,7 @@ model User {
   keys ApiKey[]
 }
 model Session {
+  teamId String @default("legacy-team")
   id String @id @default(uuid())
   hash String @unique
   userId String
@@ -24,6 +27,8 @@ model Session {
   expiresAt DateTime
 }
 model ApiKey {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   name String
   note String @default("")
@@ -42,6 +47,8 @@ model ApiKey {
   updatedAt DateTime @updatedAt
 }
 model Resource {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   kind String
   title String
@@ -60,6 +67,8 @@ model Resource {
   @@index([kind, productId, planId])
 }
 model Revision {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   resourceId String
   resource Resource @relation(fields: [resourceId], references: [id])
@@ -87,6 +96,8 @@ model Channel {
   updatedAt DateTime @updatedAt
 }
 model ProductionBatch {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   title String
   productId String
@@ -105,6 +116,8 @@ model ProductionBatch {
 }
 model Job {
   conversationId String?
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   batchId String?
   batch ProductionBatch? @relation(fields: [batchId], references: [id])
@@ -138,6 +151,8 @@ model Outbox {
   @@index([deliveredAt, availableAt])
 }
 model FileObject {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   productId String?
   conversationId String?
@@ -158,6 +173,8 @@ model FileObject {
   @@index([conversationId])
 }
 model AuditEvent {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   actorId String
   actorType String
@@ -169,15 +186,19 @@ model AuditEvent {
   @@index([productId, createdAt])
 }
 model Idempotency {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   actorId String
   key String
   requestHash String
   response Json?
   createdAt DateTime @default(now())
-  @@unique([actorId, key])
+  @@unique([teamId, actorId, key])
 }
 model Conversation {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   title String
   ownerId String
@@ -192,6 +213,8 @@ model Message {
   attachmentIds String[] @default([])
   runId String?
   status String @default("completed")
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   conversationId String
   conversation Conversation @relation(fields: [conversationId], references: [id])
@@ -204,6 +227,8 @@ model AgentRun {
   attachmentIds String[] @default([])
   inputJobIds String[] @default([])
   searchCount Int @default(0)
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   conversationId String
   conversation Conversation @relation(fields: [conversationId], references: [id])
@@ -224,6 +249,8 @@ model AgentRun {
 }
 
 model AgentEvent {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   seq BigInt @id @default(autoincrement())
   conversationId String
   runId String?
@@ -234,6 +261,8 @@ model AgentEvent {
   @@index([conversationId, seq])
 }
 model FileAnalysis {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   fileId String
   fingerprint String @unique
@@ -252,6 +281,8 @@ model FileAnalysis {
   @@index([fileId, createdAt])
 }
 model SearchRecord {
+  teamId String @default("legacy-team")
+  @@index([teamId])
   id String @id @default(uuid())
   actorId String
   runId String?
@@ -261,4 +292,125 @@ model SearchRecord {
   status String @default("running")
   result Json?
   createdAt DateTime @default(now())
+}
+model Team {
+ id String @id @default(uuid())
+ name String
+ archived Boolean @default(false)
+ createdBy String
+ createdAt DateTime @default(now())
+}
+model TeamMember {
+ id String @id @default(uuid())
+ teamId String
+ userId String
+ role String @default("editor")
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ @@unique([teamId, userId])
+ @@index([userId])
+}
+model TeamInvitation {
+ id String @id @default(uuid())
+ teamId String
+ phone String
+ role String @default("editor")
+ hash String @unique
+ createdBy String
+ expiresAt DateTime
+ acceptedAt DateTime?
+ revokedAt DateTime?
+ createdAt DateTime @default(now())
+ @@index([teamId])
+}
+model SmsChallenge {
+ id String @id @default(uuid())
+ phone String
+ purpose String
+ hash String
+ attempts Int @default(0)
+ expiresAt DateTime
+ consumedAt DateTime?
+ status String @default("sending")
+ ipHash String
+ userId String?
+ createdAt DateTime @default(now())
+ @@index([phone, purpose, createdAt])
+ @@index([ipHash, createdAt])
+}
+model Wallet {
+ id String @id @default(uuid())
+ teamId String @unique
+ balance Decimal @default(0) @db.Decimal(20,6)
+ frozen Decimal @default(0) @db.Decimal(20,6)
+ updatedAt DateTime @updatedAt
+}
+model CreditLedger {
+ id String @id @default(uuid())
+ teamId String
+ eventKey String @unique
+ actorId String
+ kind String
+ amount Decimal @db.Decimal(20,6)
+ reason String
+ referenceId String?
+ createdAt DateTime @default(now())
+ @@index([teamId, createdAt])
+}
+model PurchaseRate {
+  pricingParameters Json @default("{}")
+ id String @id @default(uuid())
+ channelId String
+ model String
+ kind String
+ version Int
+ unit String
+ rate Decimal @db.Decimal(20,8)
+ inputRate Decimal? @db.Decimal(20,8)
+ cachedInputRate Decimal? @db.Decimal(20,8)
+ resolution String @default("")
+ supplier String @default("")
+ basis String
+ effectiveAt DateTime @default(now())
+ createdBy String
+ createdAt DateTime @default(now())
+ @@unique([channelId, model, resolution, supplier, version])
+}
+model CreditQuote {
+ id String @id @default(uuid())
+ teamId String
+ actorId String
+ digest String
+ input Json
+ lines Json
+ amount Decimal @db.Decimal(20,6)
+ expiresAt DateTime
+ usedBy String? @unique
+ createdAt DateTime @default(now())
+ @@index([teamId])
+}
+model UsageRecord {
+ id String @id @default(uuid())
+ teamId String
+ invocationId String @unique
+ actorId String
+ kind String
+ model String
+ channelId String
+ rateId String
+ quoteLine Json
+ requestHash String
+ reserved Decimal @db.Decimal(20,6)
+ charged Decimal? @db.Decimal(20,6)
+ costCny Decimal? @db.Decimal(20,8)
+ status String @default("reserved")
+ costType String @default("unknown")
+ upstreamId String?
+ actualSupplier String?
+ data Json?
+ response Json?
+ error String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([teamId, createdAt])
 }

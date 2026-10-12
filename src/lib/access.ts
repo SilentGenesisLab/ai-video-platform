@@ -10,7 +10,7 @@ export async function conversationAccess(
 ) {
   requireScope(actor, "read");
   const c = await tx.conversation.findUnique({ where: { id } });
-  assert(c, 404, "会话不存在");
+  assert(c && c.teamId === actor.teamId, 404, "会话不存在");
   assert(
     c.ownerId === actor.userId ||
       (actor.type === "human" && actor.role === "admin"),
@@ -39,7 +39,7 @@ export async function scopedAccess(
 }
 export async function fileAccess(actor: Actor, id: string, tx: Tx = db) {
   const file = await tx.fileObject.findUnique({ where: { id } });
-  assert(file, 404, "文件不存在");
+  assert(file && file.teamId === actor.teamId, 404, "文件不存在");
   await scopedAccess(actor, file, tx);
   return file;
 }

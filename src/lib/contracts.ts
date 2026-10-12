@@ -160,6 +160,7 @@ export const generationEntry = z.object({
     .default({}),
 });
 export const batchInput = z.object({
+  quoteId: z.string().optional(),
   title: z.string().min(1).max(240),
   productId: z.string(),
   planId: z.string().optional(),

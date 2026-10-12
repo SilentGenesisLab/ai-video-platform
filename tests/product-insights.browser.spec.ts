@@ -5,8 +5,9 @@ import { readFile } from "node:fs/promises";
 const base = process.env.APP_URL ?? "http://127.0.0.1:3012";
 async function login(page: any) {
   await page.goto(base + "/login");
+  await page.getByRole("tab", {name:"邮箱密码"}).click();
   await page.getByLabel("邮箱").fill(process.env.ADMIN_EMAIL!);
-  await page.getByLabel("密码").fill(process.env.ADMIN_PASSWORD!);
+  await page.locator('input[name="password"]').fill(process.env.ADMIN_PASSWORD!);
   await page.getByRole("button", { name: "进入工作台" }).click();
   await expect(page.getByRole("heading", { name: "产品管理." })).toBeVisible();
 }

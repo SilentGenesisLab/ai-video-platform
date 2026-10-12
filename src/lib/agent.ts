@@ -257,14 +257,21 @@ export async function claimRun() {
       run.id,
     );
     const owner = await tx.user.findUnique({ where: { id: run.ownerId } });
+    const membership = await tx.teamMember.findUnique({
+      where: { teamId_userId: { teamId: run.teamId, userId: run.ownerId } },
+    });
+    const team = await tx.team.findUnique({ where: { id: run.teamId } });
     const source = run.sourceKeyId
       ? await tx.apiKey.findUnique({ where: { id: run.sourceKeyId } })
       : null;
     if (
       !owner?.active ||
-      !["admin", "editor"].includes(owner.role) ||
+      !membership?.active ||
+      team?.archived ||
+      !["owner", "admin", "editor"].includes(membership?.role ?? "") ||
       (run.sourceKeyId &&
         (!source?.enabled ||
+          source.teamId !== run.teamId ||
           source.revokedAt ||
           (source.expiresAt && source.expiresAt <= new Date()) ||
           !["read", "write"].every((scope) => source.scopes.includes(scope)) ||
@@ -300,7 +307,7 @@ export async function claimRun() {
         (m) => m.status === "completed",
       ),
       attachments: await tx.fileObject.findMany({
-        where: { id: { in: run.attachmentIds } },
+        where: { teamId: run.teamId, id: { in: run.attachmentIds } },
         select: {
           id: true,
           name: true,
@@ -313,11 +320,12 @@ export async function claimRun() {
       }),
       token: decrypt(run.tokenCiphertext),
       model: {
-        baseUrl: channel.baseUrl,
-        apiKey: decrypt(channel.ciphertext),
+        channelId: channel.id,
         model: (channel.models as any).text?.[0] ?? "deepseek-flash",
       },
-      scopes: run.scopes.filter((s) => (roles[owner.role] ?? []).includes(s)),
+      scopes: run.scopes.filter((s) =>
+        (roles[membership.role] ?? []).includes(s),
+      ),
     };
   });
 }
