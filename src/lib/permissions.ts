@@ -153,15 +153,3 @@ export function allowedResourceKinds(a: Actor) {
     "deliverable",
   ].filter((k) => hasPermission(a, resourceModule(k) + ".read"));
 }
-export function mediaPermission(kind: string, entries: any[] = []) {
-  if (kind === "video") return "video.generate";
-  if (kind === "overview" || entries.some((e) => e.targetShotId))
-    return "creative.generate";
-  return "asset.generate";
-}
-export function jobPermission(kind: string) {
-  if (["image", "audio"].includes(kind)) return "asset.read";
-  if (kind === "video") return "video.read";
-  if (kind === "overview") return "creative.read";
-  return "file.read";
-}

@@ -6,12 +6,9 @@ import {
 import {
   permissionCatalog,
   recommendedPermissions,
-  legacyPermissions,
   requirePermission,
   hasPermission,
   allowedResourceKinds,
-  scopeSummary,
-  validatePermissions,
 } from "@/lib/permissions";
 import { roles } from "@/lib/auth";
 import { adminRoute } from "@/lib/platform-admin";
@@ -845,6 +842,17 @@ async function handle(
         const where = actor.productIds.length
           ? { productId: { in: actor.productIds } }
           : {};
+        const visibleJobs =
+          actor.type === "agent"
+            ? await Promise.all(
+                (
+                  await db.job.findMany({
+                    where: { ...where, ...(await scopedFilter(actor)) },
+                    select: { kind: true, input: true, status: true },
+                  })
+                ).map(async (j) => ((await canReadJob(actor, j)) ? j : null)),
+              )
+            : null;
         return ok({
           counts: Object.fromEntries(items.map((i) => [i.kind, i._count])),
           pendingApprovals: await db.productionBatch.count({
@@ -854,48 +862,58 @@ async function handle(
               ...(hasPermission(actor, "video.read") ? {} : { id: { in: [] } }),
             },
           }),
-          runningJobs: await db.job.count({
-            where: {
-              ...where,
-              kind: {
-                in: [
-                  ...(hasPermission(actor, "asset.read")
-                    ? ["image", "audio"]
-                    : []),
-                  ...(hasPermission(actor, "video.read") ? ["video"] : []),
-                  ...(hasPermission(actor, "file.read")
-                    ? ["parse", "video_analysis", "import"]
-                    : []),
-                  ...(hasPermission(actor, "creative.read")
-                    ? ["overview"]
-                    : []),
-                ],
-              },
-              status: {
-                in: ["queued", "submitting", "running", "transferring"],
-              },
-            },
-          }),
-          completedJobs: await db.job.count({
-            where: {
-              ...where,
-              status: "succeeded",
-              kind: {
-                in: [
-                  ...(hasPermission(actor, "asset.read")
-                    ? ["image", "audio"]
-                    : []),
-                  ...(hasPermission(actor, "video.read") ? ["video"] : []),
-                  ...(hasPermission(actor, "file.read")
-                    ? ["parse", "video_analysis", "import"]
-                    : []),
-                  ...(hasPermission(actor, "creative.read")
-                    ? ["overview"]
-                    : []),
-                ],
-              },
-            },
-          }),
+          runningJobs: visibleJobs
+            ? visibleJobs.filter(
+                (j) =>
+                  j &&
+                  ["queued", "submitting", "running", "transferring"].includes(
+                    j.status,
+                  ),
+              ).length
+            : await db.job.count({
+                where: {
+                  ...where,
+                  kind: {
+                    in: [
+                      ...(hasPermission(actor, "asset.read")
+                        ? ["image", "audio"]
+                        : []),
+                      ...(hasPermission(actor, "video.read") ? ["video"] : []),
+                      ...(hasPermission(actor, "file.read")
+                        ? ["parse", "video_analysis", "import"]
+                        : []),
+                      ...(hasPermission(actor, "creative.read")
+                        ? ["overview"]
+                        : []),
+                    ],
+                  },
+                  status: {
+                    in: ["queued", "submitting", "running", "transferring"],
+                  },
+                },
+              }),
+          completedJobs: visibleJobs
+            ? visibleJobs.filter((j) => j?.status === "succeeded").length
+            : await db.job.count({
+                where: {
+                  ...where,
+                  status: "succeeded",
+                  kind: {
+                    in: [
+                      ...(hasPermission(actor, "asset.read")
+                        ? ["image", "audio"]
+                        : []),
+                      ...(hasPermission(actor, "video.read") ? ["video"] : []),
+                      ...(hasPermission(actor, "file.read")
+                        ? ["parse", "video_analysis", "import"]
+                        : []),
+                      ...(hasPermission(actor, "creative.read")
+                        ? ["overview"]
+                        : []),
+                    ],
+                  },
+                },
+              }),
         });
       }
       throw new HttpError(404, "接口不存在");

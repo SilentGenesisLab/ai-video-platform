@@ -2213,7 +2213,7 @@ export default function Workspace() {
                   }
                 />
               ) : section === "keys" ? (
-                <div className="table-wrap">
+                <div className="table-wrap key-table">
                   <table>
                     <thead>
                       <tr>

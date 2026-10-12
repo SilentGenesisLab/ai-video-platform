@@ -2623,3 +2623,14 @@ html[data-studio-theme="dark"] .concept-card footer .concept-delete {
     bottom: -20px;
   }
 }
+
+.key-table table {
+  min-width: 1050px;
+}
+.key-table td:nth-child(2) {
+  min-width: 220px;
+  max-width: 320px;
+}
+.key-table details ul {
+  padding-left: 18px;
+}

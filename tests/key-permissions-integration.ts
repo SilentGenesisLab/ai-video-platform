@@ -165,6 +165,13 @@ async function main() {
   await request(read.token, "/billing/wallet", "GET", undefined, 403);
   await request(read.token, "/api-keys/options", "GET", undefined, 403);
   await request(read.token, "/api-keys", "POST", { name: "forbidden" }, 403);
+  await request(
+    human,
+    `/api-keys/${read.key.id}`,
+    "PATCH",
+    { name: "old range expansion", productIds: [product.id, second.id] },
+    409,
+  );
   const context = await request(read.token, `/products/${product.id}/context`);
   assert.equal(context.resources.length, 0);
   assert.equal(context.files.length, 0);
@@ -513,7 +520,10 @@ async function main() {
   console.log(
     `KEY PERMISSIONS: ${checked} API assertions passed; no paid generation submitted.`,
   );
-  await db.channel.update({ where: { id: channel.id }, data: { enabled: false } });
+  await db.channel.update({
+    where: { id: channel.id },
+    data: { enabled: false },
+  });
 }
 main()
   .finally(async () => {

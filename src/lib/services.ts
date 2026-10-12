@@ -718,7 +718,8 @@ export async function saveKey(
     Array.isArray(old?.permissions) &&
     old?.productScopeMode === "selected" &&
     data.productIds &&
-    !data.productIds.length &&
+    (!data.productIds.length ||
+      data.productIds.some((id) => !old.productIds.includes(id))) &&
     !data.productScopeMode
   )
     assert(
