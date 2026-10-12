@@ -20,7 +20,7 @@ import {
 export function Brand() {
   return (
     <Link href="/" className="ff-brand">
-      <Clapperboard size={22} />
+      <img src="/brand/frameflow-mark.png" width={38} height={38} alt="" className="ff-brand-image" />
       <span>
         frameflow<i>.</i>
       </span>

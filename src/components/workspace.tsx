@@ -1810,7 +1810,7 @@ export default function Workspace() {
       <aside className="sidebar">
         <a className="brand" href="/studio/products">
           <span className="brand-mark">
-            <Clapperboard size={21} />
+            <img src="/brand/frameflow-mark.png" width={34} height={34} alt="" style={{ borderRadius: 9 }} />
           </span>
           frameflow<span className="brand-dot">.</span>
         </a>
