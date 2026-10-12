@@ -12,6 +12,7 @@ import {
   Wallet,
   RefreshCw,
   Plus,
+  LayoutDashboard,
 } from "lucide-react";
 const n = (v: any) =>
   Number(v ?? 0).toLocaleString("zh-CN", { maximumFractionDigits: 6 });
@@ -31,6 +32,65 @@ const costNames: any = {
   manual: "人工对账",
   unknown: "待对账",
 };
+function Trend({
+  title,
+  points,
+  field,
+  color,
+}: {
+  title: string;
+  points: any[];
+  field: string;
+  color: string;
+}) {
+  const max = Math.max(1, ...points.map((p) => Number(p[field])));
+  const coordinates = points
+    .map(
+      (p, i) => `${10 + (i * 480) / 13},${110 - (Number(p[field]) / max) * 85}`,
+    )
+    .join(" ");
+  return (
+    <article className="admin-trend">
+      <h3>{title}</h3>
+      <svg
+        viewBox="0 0 500 130"
+        role="img"
+        aria-label={`${title}：${points.map((p) => `${p.day} ${n(p[field])}`).join("，")}`}
+      >
+        <path d="M10 110H490" stroke="currentColor" opacity=".12" />
+        <polygon
+          points={`10,110 ${coordinates} 490,110`}
+          fill={color}
+          opacity=".09"
+        />
+        <polyline
+          points={coordinates}
+          fill="none"
+          stroke={color}
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+        {points.map((p, i) => (
+          <circle
+            key={p.day}
+            cx={10 + (i * 480) / 13}
+            cy={110 - (Number(p[field]) / max) * 85}
+            r="3"
+            fill={color}
+          >
+            <title>
+              {p.day}：{n(p[field])}
+            </title>
+          </circle>
+        ))}
+      </svg>
+      <div>
+        <small>{points[0]?.day}</small>
+        <small>{points.at(-1)?.day}</small>
+      </div>
+    </article>
+  );
+}
 export default function AdminConsole() {
   const [actor, setActor] = useState<any>(),
     [tab, setTab] = useState("dashboard"),
@@ -43,7 +103,8 @@ export default function AdminConsole() {
     [users, setUsers] = useState<any>({ items: [], total: 0, page: 1 }),
     [settings, setSettings] = useState<any>({ fallbackCny: 1 }),
     [pending, setPending] = useState<any[]>([]),
-    [dashboard, setDashboard] = useState<any>();
+    [dashboard, setDashboard] = useState<any>(),
+    [overview, setOverview] = useState<any>();
   const [q, setQ] = useState(""),
     [page, setPage] = useState(1),
     [editing, setEditing] = useState<any>(null),
@@ -67,7 +128,7 @@ export default function AdminConsole() {
       const params = new URLSearchParams(
         Object.entries(filters).filter(([, v]) => v !== "") as string[][],
       );
-      const [c, r, t, u, s, p, d] = await Promise.all([
+      const [c, r, t, u, s, p, d, o] = await Promise.all([
         api("/channels"),
         api("/platform/rates"),
         api("/platform/teams"),
@@ -75,6 +136,7 @@ export default function AdminConsole() {
         api("/platform/settings"),
         api("/platform/reconcile"),
         api("/platform/dashboard?" + params),
+        api("/platform/overview"),
       ]);
       setChannels(c.items);
       setRates(r.items);
@@ -83,6 +145,7 @@ export default function AdminConsole() {
       setSettings(s);
       setPending(p.items);
       setDashboard(d);
+      setOverview(o);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -133,8 +196,9 @@ export default function AdminConsole() {
           <h1>管理后台</h1>
           <p>渠道、账号与积分，统一管理。</p>
           {[
-            ["dashboard", "数据看板", BarChart3],
-            ["channels", "模型渠道", Settings2],
+            ["dashboard", "仪表盘", LayoutDashboard],
+            ["analytics", "经营分析", BarChart3],
+            ["channels", "AI 能力管理", Settings2],
             ["users", "用户管理", Users],
             ["credits", "积分管理", Wallet],
           ].map(([id, label, Icon]: any) => (
@@ -177,7 +241,79 @@ export default function AdminConsole() {
           )}
           {tab === "dashboard" && (
             <>
-              <h2>数据看板</h2>
+              <h2>仪表盘</h2>
+              <p className="muted">
+                北京时间 ·
+                活跃按当天模型调用的独立操作者统计，任务按模型调用次数统计。
+              </p>
+              <div className="admin-stats overview-stats">
+                {[
+                  ["今日注册", overview?.today?.registrations],
+                  ["今日活跃（调用）", overview?.today?.active],
+                  ["今日调用任务", overview?.today?.requests],
+                  ["今日积分消耗", overview?.today?.credits],
+                ].map(([label, value]) => (
+                  <article key={label}>
+                    <small>{label}</small>
+                    <strong>{overview ? n(value) : "—"}</strong>
+                  </article>
+                ))}
+              </div>
+              <div className="admin-trends">
+                <Trend
+                  title="近 14 天注册"
+                  points={overview?.trend ?? []}
+                  field="registrations"
+                  color="#8b75c9"
+                />
+                <Trend
+                  title="近 14 天调用任务"
+                  points={overview?.trend ?? []}
+                  field="requests"
+                  color="#389175"
+                />
+                <Trend
+                  title="近 14 天积分消耗"
+                  points={overview?.trend ?? []}
+                  field="credits"
+                  color="#cf735b"
+                />
+              </div>
+              <h3>最近失败调用</h3>
+              <div className="team-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>类型</th>
+                      <th>模型</th>
+                      <th>错误</th>
+                      <th>时间</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overview?.failures?.map((f: any) => (
+                      <tr key={f.id}>
+                        <td>{kinds[f.kind] ?? f.kind}</td>
+                        <td>{f.model}</td>
+                        <td className="admin-failure-message">{f.error}</td>
+                        <td>
+                          {new Date(f.createdAt).toLocaleString("zh-CN", {
+                            timeZone: "Asia/Shanghai",
+                          })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {overview && !overview.failures.length && (
+                  <p className="muted">暂无失败调用。</p>
+                )}
+              </div>
+            </>
+          )}
+          {tab === "analytics" && (
+            <>
+              <h2>经营分析</h2>
               <p className="muted">
                 实际费用、按采购价计算和临时估算分别列出。
               </p>
@@ -365,7 +501,7 @@ export default function AdminConsole() {
           {tab === "channels" && (
             <>
               <div className="admin-top">
-                <h2>模型渠道</h2>
+                <h2>AI 能力管理</h2>
                 <button
                   className="button dark"
                   onClick={() => {
@@ -730,7 +866,7 @@ export default function AdminConsole() {
                           <small>{u.email ?? u.phone}</small>
                         </td>
                         <td>
-                          {u.platformAdmin ? "平台管理员" : "成员"} ·{" "}
+                          {u.platformAdmin ? "管理员" : "普通用户"} ·{" "}
                           {u.active ? "启用" : "停用"}
                         </td>
                         <td>

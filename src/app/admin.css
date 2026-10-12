@@ -1,6 +1,43 @@
 .admin-console .team-layout {
   max-width: 1600px;
 }
+.admin-console .overview-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.admin-trends {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.admin-trend {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--visual-border, #e0e6df);
+  border-radius: 18px;
+  background: var(--visual-surface, #fff);
+}
+.admin-console .admin-trend h3 {
+  margin: 0 0 18px;
+}
+.admin-trend svg {
+  width: 100%;
+  display: block;
+}
+.admin-trend > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.admin-failure-message {
+  max-width: 500px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+@media (max-width: 900px) {
+  .admin-trends {
+    grid-template-columns: 1fr;
+  }
+}
 .admin-console aside button {
   display: flex;
   gap: 12px;
@@ -155,7 +192,8 @@
     grid-template-columns: 1fr;
     padding: 16px;
   }
-  .admin-stats {
+  .admin-stats,
+  .admin-console .overview-stats {
     grid-template-columns: repeat(2, 1fr);
   }
   .admin-stats strong {

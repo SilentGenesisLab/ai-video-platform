@@ -1887,11 +1887,6 @@ export default function Workspace() {
             <Users size={16} />
             团队、积分与账号
           </a>
-          {actor?.platformAdmin && (
-            <a className="team-button" href="/admin">
-              管理后台
-            </a>
-          )}
           <AccountMenu
             actor={actor}
             canLeave={confirmLeaveProduct}

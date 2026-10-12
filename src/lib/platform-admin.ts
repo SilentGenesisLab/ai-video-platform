@@ -5,6 +5,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { allocateCredits, adjustPersonal } from "./personal-credits";
 import { createTeam } from "./teams";
+import { redact } from "./security";
 const userSelect = {
   id: true,
   email: true,
@@ -99,10 +100,65 @@ export async function adminRoute(
   }
   if (
     group !== "platform" ||
-    !["users", "dashboard", "settings", "personal-credits"].includes(id)
+    ![
+      "users",
+      "dashboard",
+      "overview",
+      "settings",
+      "personal-credits",
+    ].includes(id)
   )
     return undefined;
   requirePlatform(a);
+  if (id === "overview" && method === "GET") {
+    const now = new Date();
+    const today = new Date(
+      Math.floor((+now + 8 * 3600000) / 86400000) * 86400000 - 8 * 3600000,
+    );
+    const since = new Date(+today - 13 * 86400000);
+    const [registrations, usage, failures] = await Promise.all([
+      db.$queryRaw<
+        Array<{ day: string; count: bigint }>
+      >`SELECT to_char("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS day, count(*) AS count FROM "User" WHERE "createdAt" >= ${since} AND "createdAt" <= ${now} GROUP BY day`,
+      db.$queryRaw<
+        Array<{ day: string; count: bigint; active: bigint; credits: number }>
+      >`SELECT to_char("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS day, count(*) AS count, count(DISTINCT "actorId") AS active, COALESCE(sum(charged), 0)::double precision AS credits FROM "UsageRecord" WHERE "createdAt" >= ${since} AND "createdAt" <= ${now} GROUP BY day`,
+      db.usageRecord.findMany({
+        where: { error: { not: null } },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          kind: true,
+          model: true,
+          error: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+    const trend = Array.from({ length: 14 }, (_, i) => {
+      const day = new Date(+since + i * 86400000 + 8 * 3600000)
+        .toISOString()
+        .slice(0, 10);
+      const r = registrations.find((r) => r.day === day),
+        u = usage.find((u) => u.day === day);
+      return {
+        day,
+        registrations: Number(r?.count ?? 0),
+        requests: Number(u?.count ?? 0),
+        active: Number(u?.active ?? 0),
+        credits: Number(u?.credits ?? 0),
+      };
+    });
+    return {
+      today: trend[13],
+      trend,
+      failures: failures.map((f) => ({ ...f, error: redact(f.error) })),
+      timezone: "Asia/Shanghai",
+      activeDefinition: "当天发生模型调用的独立操作者",
+      taskDefinition: "实际模型调用次数，包括文本和媒体调用",
+    };
+  }
   if (id === "personal-credits" && method === "POST")
     return adjustPersonal(a, body);
   if (id === "settings") {

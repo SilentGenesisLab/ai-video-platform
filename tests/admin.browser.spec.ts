@@ -23,17 +23,25 @@ test("ADMIN-01 four modules, filters, defaults and mobile layout", async ({
   page,
 }) => {
   await login(page);
-  await page.getByRole("link", { name: "管理后台", exact: true }).click();
+  await page.getByRole("button", { name: "账号菜单", exact: true }).click();
+  await page.getByRole("menuitem", { name: "管理后台", exact: true }).click();
   await expect(page).toHaveURL(/\/admin/);
   await expect(
-    page.getByRole("heading", { name: "数据看板", exact: true }),
+    page.getByRole("heading", { name: "仪表盘", exact: true }),
   ).toBeVisible();
+  const overview = await request(page, "/platform/overview");
+  expect(overview.trend).toHaveLength(14);
+  expect(overview.today.day).toBe(overview.trend[13].day);
+  await expect(
+    page.getByRole("heading", { name: "近 14 天注册", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "经营分析", exact: true }).click();
   await page
     .getByRole("combobox", { name: "时间范围", exact: true })
     .selectOption("7");
   await page.getByRole("button", { name: "应用筛选" }).click();
   await expect(page.getByRole("heading", { name: "费用与积分" })).toBeVisible();
-  await page.getByRole("button", { name: "模型渠道", exact: true }).click();
+  await page.getByRole("button", { name: "AI 能力管理", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "缺价默认收费" }),
   ).toBeVisible();
@@ -109,6 +117,36 @@ test("ADMIN-02 account creation, credits, status and session invalidation", asyn
       await other.request.get(process.env.APP_URL! + "/api/v1/platform/users")
     ).status(),
   ).toBe(403);
+  expect(
+    (
+      await other.request.get(
+        process.env.APP_URL! + "/api/v1/platform/overview",
+      )
+    ).status(),
+  ).toBe(403);
+  await other.goto(process.env.APP_URL! + "/studio/products");
+  await other.getByRole("button", { name: "账号菜单", exact: true }).click();
+  await expect(
+    other.getByRole("menuitem", { name: "管理后台", exact: true }),
+  ).toHaveCount(0);
+  await other.goto(process.env.APP_URL! + "/admin");
+  await expect(other).toHaveURL(/\/studio\/products/);
+  expect(
+    (
+      await other.request.post(
+        process.env.APP_URL! + "/api/v1/platform/personal-credits",
+        {
+          headers: { Origin: process.env.APP_URL! },
+          data: {
+            userId: user.id,
+            amount: 100,
+            reason: "越权测试",
+            eventKey: randomUUID(),
+          },
+        },
+      )
+    ).status(),
+  ).toBe(403);
   await request(page, `/platform/users/${user.id}/reset-password`, "POST", {
     password: "UpdatedFixture@2026",
   });
@@ -133,7 +171,7 @@ test("ADMIN-03 channel configuration, immutable price and pool allocation", asyn
   await login(page);
   await page.goto("/admin");
   const actor = await request(page, "/auth/me");
-  await page.getByRole("button", { name: "模型渠道", exact: true }).click();
+  await page.getByRole("button", { name: "AI 能力管理", exact: true }).click();
   await page.getByRole("button", { name: "新增渠道", exact: true }).click();
   const name = `后台渠道 ${randomUUID()}`;
   await page.getByLabel("渠道名称", { exact: true }).fill(name);
