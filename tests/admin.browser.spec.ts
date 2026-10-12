@@ -140,6 +140,7 @@ test("ADMIN-03 channel configuration, immutable price and pool allocation", asyn
     .locator('textarea[name="models"]')
     .fill('{"text":["fixture-text"]}');
   await page.getByRole("button", { name: "保存渠道", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("已保存");
   const channels = (await request(page, "/channels")).items;
   const channel = channels.find((c: any) => c.name === name);
   expect(channel).toBeTruthy();

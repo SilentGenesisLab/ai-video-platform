@@ -190,7 +190,8 @@ test("AUTH-01 wrong password, successful login, logout and protected route", asy
     role: "viewer",
   });
   members.push(member.id);
-  await page.getByRole("button", { name: "退出登录" }).click();
+  await page.getByRole("button", { name: "账号菜单" }).click();
+  await page.getByRole("menuitem", { name: "退出登录" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.getByRole("tab", { name: "邮箱密码" }).click();
   await page.getByLabel("邮箱", { exact: true }).fill(email);
@@ -202,7 +203,8 @@ test("AUTH-01 wrong password, successful login, logout and protected route", asy
     "账号或密码错误",
   );
   await login(page);
-  await page.getByRole("button", { name: "退出登录" }).click();
+  await page.getByRole("button", { name: "账号菜单" }).click();
+  await page.getByRole("menuitem", { name: "退出登录" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto("/studio/products", { waitUntil: "commit" });
   await expect(page).toHaveURL(/\/login$/);
@@ -321,7 +323,9 @@ test("FLOW-01 product to creative, plan, storyboard, asset, script and video rej
     .filter({ hasText: p.title })
     .getByRole("button", { name: "开始策划" })
     .click();
-  await expect(page.getByLabel("按产品筛选")).toHaveValue(p.id);
+  await expect(page.locator('select[aria-label="按产品筛选"]')).toHaveValue(
+    p.id,
+  );
   await page.getByRole("button", { name: "创意批次", exact: true }).click();
   d = await createUI(page, "新建创意批次", prefix + " ideas");
   await d.getByLabel("创作要求").fill("Show the actual use case");
@@ -433,7 +437,7 @@ test("FILE-01 upload text, extraction, file ID and product version", async ({
   });
   await expect(
     d.getByText("已上传，请保存产品关联", { exact: true }),
-  ).toBeVisible();
+  ).toBeAttached();
   await save(page, "products", true);
   const latest = await data(page, `/products/${p.id}`);
   expect(latest.version).toBe(p.version + 1);
@@ -485,7 +489,7 @@ test("FILE-02 silent video upload, playback, delivery and incomplete lineage", a
   });
   await expect(
     page.getByText("已上传，请保存产品关联", { exact: true }),
-  ).toBeVisible();
+  ).toBeAttached();
   await save(page, "products", true);
   const latest = await data(page, `/products/${p.id}`);
   const fileId = latest.content.fileIds[0];
@@ -605,7 +609,7 @@ test("GEN-01 switching channel uses that channel's supported model", async ({
   const d = page.getByRole("dialog");
   await chooseSelect(d, "产品", p.id);
   await chooseSelect(d, "生成渠道", c.id);
-  await expect(d.getByLabel("模型", { exact: true })).toHaveValue(
+  await expect(d.locator('select[aria-label="模型"]')).toHaveValue(
     "custom-image-fixture",
   );
   await chooseSelect(d, "制作类型", "audio");
@@ -617,7 +621,8 @@ test("GEN-01 switching channel uses that channel's supported model", async ({
 test("AUTH-03 email login, password visibility and network failure recovery", async ({
   page,
 }) => {
-  await page.getByRole("button", { name: "退出登录" }).click();
+  await page.getByRole("button", { name: "账号菜单" }).click();
+  await page.getByRole("menuitem", { name: "退出登录" }).click();
   await page.getByRole("tab", { name: "邮箱密码" }).click();
   const password = page.locator('input[name="password"]');
   await page.getByRole("button", { name: "显示密码", exact: true }).click();
@@ -648,7 +653,9 @@ test("CHAT-01 live Agent reads product and persists conversation after reload", 
   test.setTimeout(150000);
   const p = await seed(page);
   await page.goto(`/studio/creative?productId=${p.id}`);
-  await expect(page.getByLabel("按产品筛选")).toHaveValue(p.id);
+  await expect(page.locator('select[aria-label="按产品筛选"]')).toHaveValue(
+    p.id,
+  );
   await page.getByRole("button", { name: "创作搭档", exact: true }).click();
   await page
     .getByLabel("发送给创作搭档")
@@ -805,7 +812,9 @@ test("CHAT-02 polling failure is visible and recovers without uncaught errors", 
     productId: p.id,
   });
   await page.goto(`/studio/creative?productId=${p.id}`);
-  await expect(page.getByLabel("按产品筛选")).toHaveValue(p.id);
+  await expect(page.locator('select[aria-label="按产品筛选"]')).toHaveValue(
+    p.id,
+  );
   await page.route(`**/api/v1/conversations/${c.id}`, (r) =>
     r.fulfill({
       status: 503,

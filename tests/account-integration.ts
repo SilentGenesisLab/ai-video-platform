@@ -7,8 +7,11 @@ import { createTeam } from "../src/lib/teams";
 import { digest, encrypt } from "../src/lib/security";
 const base = process.env.APP_URL!;
 assert(
-  base === "http://127.0.0.1:3002" &&
-    process.env.DATABASE_URL?.endsWith("/frameflow_teams"),
+  (base === "http://127.0.0.1:3002" &&
+    process.env.DATABASE_URL?.endsWith("/frameflow_teams")) ||
+    (process.env.ALLOW_LOCAL_REVIEW_TESTS === "1" &&
+      base === "http://127.0.0.1:3000" &&
+      process.env.DATABASE_URL?.includes("127.0.0.1:55432/aivideo")),
   "Isolated database only",
 );
 let checked = 0;

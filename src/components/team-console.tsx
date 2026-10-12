@@ -42,8 +42,10 @@ export default function TeamConsole() {
       if (
         new URLSearchParams(window.location.search).get("tab") === "platform"
       ) {
-        if (a.platformAdmin) setTab("platform");
-        else
+        if (a.platformAdmin) {
+          window.location.replace("/admin");
+          return;
+        } else
           setError(
             "采购价由平台管理员统一配置，请将缺失型号与失败日志发送给管理员。",
           );

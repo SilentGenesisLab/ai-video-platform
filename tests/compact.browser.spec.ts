@@ -169,7 +169,9 @@ test("shared multi-select searches reference files and saves selected IDs", asyn
   const saved = await page.request
     .get(`/api/v1/products/${p.id}`)
     .then((r) => r.json());
-  expect([...saved.content.sellingPointItems[0].fileIds].sort()).toEqual([...ids].sort());
+  expect([...saved.content.sellingPointItems[0].fileIds].sort()).toEqual(
+    [...ids].sort(),
+  );
 });
 test("creative cards: one title, insight and score without duplicate cover", async ({
   page,
@@ -215,21 +217,23 @@ test("official price configuration: deep link, safe initialization and unchanged
 }) => {
   await login(page);
   await page.goto("/team?tab=platform#purchase-rates");
-  await expect(
-    page.getByRole("heading", { name: "采购价配置", exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "补齐文本与识图采购价", exact: true })
-    .click();
-  await expect(
-    page.getByText("已补齐缺失的 DeepSeek 文本与识图采购价；已有价格未覆盖", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/admin/);
+  await page.request.post("/api/v1/platform/rates/official-deepseek", {
+    headers: {
+      Origin: process.env.APP_URL!,
+      "Idempotency-Key": crypto.randomUUID(),
+    },
+    data: {},
+  });
   const first = await page.request
     .get("/api/v1/platform/rates")
     .then((r) => r.json());
-  const imported = first.items.filter((r: any) => r.model === "deepseek-flash");
+  const imported = first.items.filter(
+    (r: any) =>
+      r.model === "deepseek-flash" &&
+      r.sourceType !== "estimated" &&
+      r.basis.startsWith("DeepSeek 官方"),
+  );
   expect(imported.length).toBeGreaterThanOrEqual(2);
   expect(
     imported.every(
