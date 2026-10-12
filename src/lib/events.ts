@@ -66,7 +66,11 @@ export async function conversationEvents(req: Request, id: string) {
     req.headers.get("last-event-id") ||
     new URL(req.url).searchParams.get("after") ||
     "0";
-  assert(/^\d{1,20}$/.test(after), 422, "无效事件游标");
+  assert(
+    /^\d{1,19}$/.test(after) && BigInt(after) <= 9223372036854775807n,
+    422,
+    "无效事件游标",
+  );
   let cursor = BigInt(after),
     closed = false,
     busy = false,

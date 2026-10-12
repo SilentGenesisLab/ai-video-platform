@@ -219,8 +219,15 @@ export async function claimRun() {
   return db.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<
       { id: string }[]
-    >`SELECT id FROM "AgentRun" WHERE "stopRequested" = false AND (status = 'queued' OR (status = 'running' AND "leaseUntil" < NOW())) ORDER BY "createdAt" ASC FOR UPDATE SKIP LOCKED LIMIT 1`;
+    >`SELECT r.id FROM "AgentRun" r JOIN "Conversation" c ON c.id = r."conversationId" WHERE r."stopRequested" = false AND (r.status = 'queued' OR (r.status = 'running' AND r."leaseUntil" < (NOW() AT TIME ZONE 'UTC'))) ORDER BY r."createdAt" ASC FOR UPDATE OF c SKIP LOCKED LIMIT 1`;
     if (!rows.length) return null;
+    // Lock conversation before run, matching stop/event writers. The joined
+    // snapshot may predate a heartbeat or claim, so recheck eligibility after
+    // acquiring the conversation lock before rotating the execution token.
+    const eligible = await tx.$queryRaw<
+      { id: string }[]
+    >`SELECT id FROM "AgentRun" WHERE id = ${rows[0].id} AND "stopRequested" = false AND (status = 'queued' OR (status = 'running' AND "leaseUntil" < (NOW() AT TIME ZONE 'UTC'))) FOR UPDATE`;
+    if (!eligible.length) return null;
     const claimedToken = randomToken("avr_");
     const run = await tx.agentRun.update({
       where: { id: rows[0].id },
@@ -260,7 +267,7 @@ export async function claimRun() {
         (!source?.enabled ||
           source.revokedAt ||
           (source.expiresAt && source.expiresAt <= new Date()) ||
-          !source.scopes.includes("write") ||
+          !["read", "write"].every((scope) => source.scopes.includes(scope)) ||
           (source.productIds.length &&
             (!run.productIds.length ||
               run.productIds.some((p) => !source.productIds.includes(p))))))

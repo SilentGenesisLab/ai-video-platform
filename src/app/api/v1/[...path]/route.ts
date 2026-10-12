@@ -33,6 +33,7 @@ import {
   keyAction,
   listKeys,
   listResources,
+  ownedKey,
   resourceDetail,
   saveKey,
   saveResource,
@@ -198,13 +199,32 @@ async function handle(
       throw new HttpError(404, "内部接口不存在");
     }
     const actor = await authenticate(req);
-    const create = (fn: Parameters<typeof idempotent>[3]) =>
-      idempotent(
+    const create = async (fn: Parameters<typeof idempotent>[3]) => {
+      // Authorization must run on every request, including idempotent replays.
+      if (group === "api-keys") requireHuman(actor);
+      else if (["members", "channels"].includes(group)) {
+        requireHuman(actor);
+        requireScope(actor, "admin");
+      } else
+        requireScope(
+          actor,
+          group === "production-batches" || action === "overview"
+            ? "generate"
+            : "write",
+        );
+      if (body?.productId) productAccess(actor, body.productId);
+      if (body?.conversationId)
+        await conversationAccess(actor, body.conversationId);
+      const result = await idempotent(
         actor,
         req.headers.get("idempotency-key"),
         { method, path: url.pathname, body },
         fn,
       );
+      if (group === "api-keys")
+        await ownedKey(actor, (result as { id: string }).id);
+      return result;
+    };
     if (group === "auth" && id === "me" && method === "GET") return ok(actor);
     if (group === "resources" && id && method === "GET")
       return ok(await resourceDetail(actor, id));
@@ -659,6 +679,7 @@ async function handle(
         await webSearch(actor, body, req.headers.get("idempotency-key")),
       );
     if (group === "conversations") {
+      requireScope(actor, "read");
       if (!id && method === "POST")
         return ok(
           await create((tx) => createConversation(actor, body, tx)),
@@ -680,7 +701,7 @@ async function handle(
       if (id) {
         await conversationAccess(actor, id);
         if (method === "GET" && action === "events")
-          return conversationEvents(req, id);
+          return await conversationEvents(req, id);
         if (method === "POST" && action === "imports")
           return ok(
             await create((tx) => importVideo(actor, id, body, tx)),

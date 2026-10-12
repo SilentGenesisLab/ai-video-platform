@@ -56,6 +56,13 @@ test("ASSISTANT-01 overlay does not reflow, resizes and retains draft across rou
   await expect
     .poll(async () => (await panel.boundingBox())!.width)
     .toBeCloseTo(expanded!.width, 0);
+  // No attachment or message has created a server conversation yet.
+  await page.reload();
+  await page.getByRole("button", { name: "创作搭档", exact: true }).click();
+  await expect(page.getByLabel("发送给创作搭档")).toHaveValue("保留跨页面草稿");
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeCloseTo(expanded!.width, 0);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(async () => (await panel.boundingBox())!.width).toBe(390);
   expect(
@@ -183,15 +190,13 @@ test("ASSISTANT-04 attachment-only send parses before model and preserves origin
   await page.getByRole("button", { name: "创作搭档", exact: true }).click();
   await page.getByRole("button", { name: "新对话", exact: true }).click();
   const name = `发送验收-${randomUUID()}.txt`;
-  await page
-    .getByLabel("上传聊天附件")
-    .setInputFiles({
-      name,
-      mimeType: "text/plain",
-      buffer: Buffer.from(
-        "验收材料：产品是一把蓝色折叠伞，产品代号 QX732。请只根据材料用一句话总结，不要联网或生成媒体。",
-      ),
-    });
+  await page.getByLabel("上传聊天附件").setInputFiles({
+    name,
+    mimeType: "text/plain",
+    buffer: Buffer.from(
+      "验收材料：产品是一把蓝色折叠伞，产品代号 QX732。请只根据材料用一句话总结，不要联网或生成媒体。",
+    ),
+  });
   const card = page
     .locator(".assistant-drafts .assistant-file")
     .filter({ hasText: name });

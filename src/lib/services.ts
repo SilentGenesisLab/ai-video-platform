@@ -2,6 +2,7 @@ import { adaptProductContent, normalizeProductUpdate } from "./product-content";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "./db";
+import { conversationAccess, fileAccess } from "./access";
 import {
   Actor,
   agentScopes,
@@ -63,9 +64,16 @@ export async function idempotent(
   const requestHash = digest(canonical(request)),
     where = { actorId_key: { actorId: actor.id, key } };
   const previous = await db.idempotency.findUnique({ where });
-  const replay = (response: any) => {
+  const replay = async (response: any) => {
     if (response?.kind === "product") productAccess(actor, response.id);
     else if (response?.productId) productAccess(actor, response.productId);
+    if (response?.file?.id) await fileAccess(actor, response.file.id);
+    if (response?.conversationId)
+      await conversationAccess(actor, response.conversationId);
+    // Conversation creation returns the conversation itself, including an
+    // intentionally nullable productId. Recheck its current ownership/scope.
+    if (response?.ownerId && "productId" in response && response?.title)
+      await conversationAccess(actor, response.id);
     return response;
   };
   if (previous) {

@@ -50,7 +50,7 @@ export async function recordRunEvent(
         (!source?.enabled ||
           source.revokedAt ||
           (source.expiresAt && source.expiresAt <= new Date()) ||
-          !source.scopes.includes("write") ||
+          !["read", "write"].every((scope) => source.scopes.includes(scope)) ||
           (source.productIds.length &&
             (!run.productIds.length ||
               run.productIds.some((p) => !source.productIds.includes(p))))))

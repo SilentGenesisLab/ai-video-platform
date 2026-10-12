@@ -4,7 +4,7 @@ import { db } from "../src/lib/db";
 import { digest, encrypt, randomToken } from "../src/lib/security";
 import { recordRunEvent } from "../src/lib/run-events";
 import { conversationAccess, fileAccess } from "../src/lib/access";
-import { controlRun, conversationSnapshot } from "../src/lib/agent";
+import { claimRun, controlRun, conversationSnapshot } from "../src/lib/agent";
 import { roles, type Actor } from "../src/lib/auth";
 import { initiateUpload, completeUpload, oss } from "../src/lib/storage";
 import { saveToProduct, readContent } from "../src/lib/attachments";
@@ -52,6 +52,12 @@ async function main() {
   });
   const runner: Actor = { ...actor, type: "agent", runId: run.id };
   try {
+    await claimRun();
+    check(
+      (await db.agentRun.findUniqueOrThrow({ where: { id: run.id } }))
+        .attempt === 1,
+      "UTC lease remains valid with a non-UTC database timezone",
+    );
     await assert.rejects(
       () => conversationAccess(runner, other.id),
       (e: any) => e.status === 403,
@@ -95,6 +101,14 @@ async function main() {
     );
     check(true, "stale execution attempt rejected");
     const snapshot = await conversationSnapshot(actor, c.id);
+    const invalidCursor = await fetch(
+      `${base}/api/v1/conversations/${c.id}/events?after=99999999999999999999`,
+      { headers: { Authorization: "Bearer " + token } },
+    );
+    check(
+      invalidCursor.status === 422,
+      "out-of-range event cursor is rejected before opening SSE",
+    );
     const abort = new AbortController();
     const response = await fetch(
       `${base}/api/v1/conversations/${c.id}/events?after=0`,

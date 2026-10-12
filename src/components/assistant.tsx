@@ -194,6 +194,7 @@ function AssistantPanel({
     [draftIds, setDraftIds] = useState<string[]>([]),
     [files, setFiles] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState(false),
+    [hydrated, setHydrated] = useState(false),
     [progress, setProgress] = useState(""),
     [notice, setNotice] = useState(""),
     [toolStatus, setToolStatus] = useState("");
@@ -219,7 +220,7 @@ function AssistantPanel({
   const storageKey = "assistant:" + (binding.userId ?? "unknown");
   const run = conversation?.runs?.[0],
     active = run && activeStates.includes(run.status);
-  const readOnly = binding.readOnly;
+  const readOnly = binding.readOnly || !hydrated;
   useEffect(() => {
     const resize = () => setViewport(window.innerWidth);
     resize();
@@ -279,16 +280,21 @@ function AssistantPanel({
         selectConversation(
           saved === "" ? "" : (existing?.id ?? scoped?.id ?? ""),
         );
+        setHydrated(true);
       })
-      .catch((e) => setNotice(e.message));
+      .catch((e) => {
+        selectConversation("");
+        setNotice(e.message);
+        setHydrated(true);
+      });
   }, [binding, selectConversation, storageKey]);
   useEffect(() => {
-    if (loaded.current)
+    if (hydrated)
       sessionStorage.setItem(
         `${storageKey}:draft:${id}`,
         JSON.stringify({ text, ids: draftIds, importJobs }),
       );
-  }, [text, draftIds, importJobs, id, storageKey]);
+  }, [text, draftIds, importJobs, id, storageKey, hydrated]);
   useEffect(() => {
     if (!id) return;
     let mounted = true,
@@ -765,6 +771,7 @@ function AssistantPanel({
       <div className="chat-select">
         <select
           aria-label="选择会话"
+          disabled={!hydrated}
           value={id}
           onChange={(e) => selectConversation(e.target.value)}
         >
@@ -778,6 +785,7 @@ function AssistantPanel({
         <button
           className="icon-button"
           aria-label="新对话"
+          disabled={!hydrated}
           onClick={() => selectConversation("")}
         >
           <Plus size={18} />
