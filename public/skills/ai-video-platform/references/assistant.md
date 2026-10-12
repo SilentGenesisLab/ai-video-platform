@@ -1,4 +1,4 @@
-# Assistant API (1.4.2)
+# Assistant API (1.5.0)
 
 Authenticate with the private AIVIDEO_API_KEY. Never include credentials in URLs or logs.
 

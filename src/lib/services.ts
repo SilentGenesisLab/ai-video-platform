@@ -1,3 +1,14 @@
+import {
+  requirePermission,
+  resourceModule,
+  allowedResourceKinds,
+  hasPermission,
+  permissionCatalog,
+  legacyPermissions,
+  validatePermissions,
+  scopeSummary,
+  permissionsOf,
+} from "./permissions";
 import { adaptProductContent, normalizeProductUpdate } from "./product-content";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -116,6 +127,7 @@ export async function getResource(actor: Actor, id: string, tx: Tx = db) {
   requireScope(actor, "read");
   const r = await tx.resource.findUnique({ where: { id } });
   assert(r && r.teamId === actor.teamId, 404, "对象不存在");
+  requirePermission(actor, resourceModule(r.kind) + ".read");
   productAccess(actor, r.kind === "product" ? r.id : r.productId);
   return r;
 }
@@ -166,6 +178,7 @@ export async function validateFiles(
   tx: Tx = db,
 ) {
   productAccess(actor, productId);
+  if (ids.length) requirePermission(actor, "file.read");
   const files = await tx.fileObject.findMany({ where: { id: { in: ids } } });
   assert(
     files.length === new Set(ids).size &&
@@ -189,6 +202,7 @@ export async function saveResource(
   id?: string,
 ) {
   requireScope(actor, "write");
+  requirePermission(actor, resourceModule(kind) + ".write");
   const parsed = resourceInput.parse(input);
   const old = id ? await getResource(actor, id, tx) : null;
   const productFiles =
@@ -440,6 +454,7 @@ export async function listResources(
   params: URLSearchParams,
 ) {
   requireScope(actor, "read");
+  requirePermission(actor, resourceModule(kind) + ".read");
   if (params.get("productId")) productAccess(actor, params.get("productId"));
   const page = Math.max(1, Number(params.get("page")) || 1),
     limit = Math.min(100, Math.max(1, Number(params.get("limit")) || 30));
@@ -518,14 +533,20 @@ export async function context(
   const [resources, resourcesTotal, files, filesTotal, referenced] =
     await Promise.all([
       db.resource.findMany({
-        where: { productId: id },
+        where: { productId: id, kind: { in: allowedResourceKinds(actor) } },
         orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
         skip: (resourcesPage - 1) * limit,
         take: limit,
       }),
-      db.resource.count({ where: { productId: id } }),
+      db.resource.count({
+        where: { productId: id, kind: { in: allowedResourceKinds(actor) } },
+      }),
       db.fileObject.findMany({
-        where: { productId: id, status: "ready" },
+        where: {
+          productId: id,
+          status: "ready",
+          ...(hasPermission(actor, "file.read") ? {} : { id: { in: [] } }),
+        },
         orderBy: [{ createdAt: "desc" }, { id: "asc" }],
         skip: (filesPage - 1) * limit,
         take: limit,
@@ -538,7 +559,13 @@ export async function context(
           parseError: true,
         },
       }),
-      db.fileObject.count({ where: { productId: id, status: "ready" } }),
+      db.fileObject.count({
+        where: {
+          productId: id,
+          status: "ready",
+          ...(hasPermission(actor, "file.read") ? {} : { id: { in: [] } }),
+        },
+      }),
       db.fileObject.findMany({
         where: { productId: id, id: { in: fileReferences(product.content) } },
         select: { id: true, name: true, mime: true },
@@ -577,6 +604,8 @@ const keySelect = {
   prefix: true,
   ownerId: true,
   scopes: true,
+  permissions: true,
+  productScopeMode: true,
   productIds: true,
   enabled: true,
   expiresAt: true,
@@ -616,6 +645,55 @@ export async function saveKey(
   requireHuman(actor);
   const data = keyInput.parse(input);
   const old = id ? await ownedKey(actor, id, tx) : null;
+  const permissions: string[] | undefined =
+    data.permissions ??
+    (Array.isArray(old?.permissions)
+      ? (old.permissions as string[])
+      : undefined);
+  if (
+    !data.permissions &&
+    Array.isArray(old?.permissions) &&
+    data.scopes &&
+    JSON.stringify([...data.scopes].sort()) !==
+      JSON.stringify([...old.scopes].sort())
+  )
+    assert(
+      false,
+      409,
+      "此 Key 已使用细分权限，请读取新结构后修改 permissions",
+      "KEY_PERMISSION_CONFLICT",
+    );
+  if (permissions) validatePermissions(permissions);
+  const scopes = permissions
+    ? scopeSummary(permissions)
+    : (data.scopes ?? old?.scopes ?? ["read", "write", "generate"]);
+  const productIds = data.productIds ?? old?.productIds ?? [];
+  if (
+    Array.isArray(old?.permissions) &&
+    old?.productScopeMode === "selected" &&
+    data.productIds &&
+    !data.productIds.length &&
+    !data.productScopeMode
+  )
+    assert(
+      false,
+      409,
+      "请明确指定 productScopeMode，不能隐式扩大产品范围",
+      "KEY_SCOPE_CONFLICT",
+    );
+  const productScopeMode =
+    data.productScopeMode ??
+    (data.productIds
+      ? data.productIds.length
+        ? "selected"
+        : "all"
+      : (old?.productScopeMode ?? "all"));
+  assert(
+    productScopeMode === "all" ? !productIds.length : productIds.length > 0,
+    422,
+    "全部模式不得携带产品 ID；指定模式至少选择一个产品",
+  );
+
   const ownerId = old?.ownerId ?? data.ownerId ?? actor.userId;
   assert(
     actor.role === "admin" || ownerId === actor.userId,
@@ -628,7 +706,7 @@ export async function saveKey(
   });
   assert(owner?.active && membership?.active, 422, "成员不可用");
   assert(
-    data.scopes.every(
+    scopes.every(
       (s) =>
         actor.scopes.includes(s) &&
         (roles[membership!.role] ?? []).includes(s) &&
@@ -637,7 +715,7 @@ export async function saveKey(
     403,
     "不能授予超出成员权限的能力",
   );
-  for (const productId of data.productIds) {
+  for (const productId of productIds) {
     const r = await getResource(actor, productId, tx);
     assert(r.kind === "product", 422, "无效产品范围");
   }
@@ -645,8 +723,10 @@ export async function saveKey(
   const fields = {
     name: data.name,
     note: data.note,
-    scopes: data.scopes,
-    productIds: data.productIds,
+    scopes,
+    ...(permissions ? { permissions: json(permissions) } : {}),
+    productScopeMode,
+    productIds,
     enabled: data.enabled,
     expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
   };
@@ -666,7 +746,18 @@ export async function saveKey(
         },
         select: keySelect,
       });
-  await audit(tx, actor, old ? "key.updated" : "key.created", key.id);
+  await audit(
+    tx,
+    actor,
+    old ? "key.updated" : "key.created",
+    key.id,
+    undefined,
+    {
+      permissions: permissions ?? legacyPermissions(scopes),
+      productScopeMode,
+      productIds,
+    },
+  );
   return key;
 }
 export async function keyAction(actor: Actor, id: string, action: string) {
@@ -701,14 +792,35 @@ export async function keyAction(actor: Actor, id: string, action: string) {
     );
     const owner = await tx.user.findUnique({ where: { id: key.ownerId } });
     assert(owner?.active, 409, "Key 所属成员已停用");
+    const member = await tx.teamMember.findUnique({
+      where: { teamId_userId: { teamId: actor.teamId, userId: key.ownerId } },
+    });
+    assert(member?.active, 409, "Key 所属成员已离开团队");
+    const effectivePermissions = permissionsOf({
+      scopes: key.scopes,
+      permissions: Array.isArray(key.permissions)
+        ? (key.permissions as string[])
+        : null,
+    }).filter((p) =>
+      permissionCatalog.some(
+        (c) => c.id === p && (roles[member.role] ?? []).includes(c.scope),
+      ),
+    );
     const base = (process.env.APP_URL ?? "http://localhost:3000").replace(
       /\/$/,
       "",
     );
     await audit(tx, actor, "key.instructions_copied", id);
     return {
-      instructions: `请安装并使用 AI Video Platform Skill（版本 1.4.2）。\n平台：${base}\n安装入口：${base}/skills/ai-video-platform/SKILL.md\n安装包：${base}/skills/ai-video-platform.zip\n\n将以下配置保存到你环境的私有凭据配置中，不打印或提交到仓库：\nAIVIDEO_BASE_URL=${base}\nAIVIDEO_API_KEY=${decrypt(key.ciphertext)}\n\n先读取安装入口，安装到当前 Agent 支持的 Skill 目录。使用 GET /api/v1/auth/me 验证身份与权限；验证阶段不要创建数据或调用生成。后续按我的具体任务操作平台。\n权限：${key.scopes.join(", ")}\n固定团队：${actor.teamName} (${actor.teamId})\n产品范围：${key.productIds.length ? key.productIds.join(", ") : "全部产品"}\n视频生成必须在平台人工审批。`,
-      skillVersion: "1.4.2",
+      instructions: `请安装并使用 AI Video Platform Skill（版本 1.5.0）。\n平台：${base}\n安装入口：${base}/skills/ai-video-platform/SKILL.md\n安装包：${base}/skills/ai-video-platform.zip\n\n将以下配置保存到你环境的私有凭据配置中，不打印或提交到仓库：\nAIVIDEO_BASE_URL=${base}\nAIVIDEO_API_KEY=${decrypt(key.ciphertext)}\n\n先读取安装入口，安装到当前 Agent 支持的 Skill 目录。使用 GET /api/v1/auth/me 验证身份与权限；验证阶段不要创建数据或调用生成。后续按我的具体任务操作平台。\n权限：${effectivePermissions
+        .map((p) => permissionCatalog.find((c) => c.id === p)?.label ?? p)
+        .join(
+          ", ",
+        )}\n固定团队：${actor.teamName} (${actor.teamId})\n产品范围：${key.productIds.length ? key.productIds.join(", ") : "全部产品"}\n视频生成必须在平台人工审批。`,
+      skillVersion: "1.5.0",
+      permissions: effectivePermissions,
+      productScopeMode: key.productScopeMode,
+      productIds: key.productIds,
     };
   });
 }

@@ -1,10 +1,10 @@
-# API reference notes · v1.4.2
+# API reference notes · v1.5.0
 
 All business endpoints start with `/api/v1`. Use JSON request bodies, Bearer authentication, and an 8–200 character `Idempotency-Key` header on creation requests. Collection reads return `{items, total?, page?, limit?}`. Resource updates use PATCH and include `baseVersion`.
 
 ## Discover and create
 
-1. `GET /auth/me`: identity, scopes, productIds; an empty productIds list means all products.
+1. `GET /auth/me`: identity, effective permissions, legacy scopes, productScopeMode and productIds. Mode all includes future team products; selected permits only its nonempty productIds. For legacy keys without a mode, only an empty productIds list denotes all.
 2. `GET /products` and `GET /products/{id}/context`: select a product and obtain its brief, materials, related resources.
 3. `POST /creative-batches`: `{title,productId,content:{requirements,count}}`.
 4. `POST /concepts`: `{title,productId,parentId:<batchId>,content:{hook,idea,structure,emotion,selfReview,comments}}`.

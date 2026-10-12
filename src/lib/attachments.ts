@@ -1,3 +1,4 @@
+import { requirePermission } from "./permissions";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -26,6 +27,7 @@ export async function createAnalysis(
     503,
     "视频识别暂未启用",
   );
+  requirePermission(actor, "file.analyze");
   const f = await fileAccess(actor, fileId, tx);
   assert(
     f.status === "ready" && f.mime.startsWith("video/"),
@@ -98,6 +100,7 @@ export async function prepareAttachments(
       jobs.push(existing.id);
       continue;
     }
+    requirePermission(actor, "file.analyze");
     const job = await tx.job.create({
       data: {
         productId: f.productId,

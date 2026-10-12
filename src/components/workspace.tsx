@@ -1,5 +1,11 @@
 "use client";
 import Select from "./select";
+import KeyPermissionsEditor from "./key-editor";
+import {
+  permissionsOf,
+  permissionCatalog,
+  permissionGroups,
+} from "../lib/permissions";
 import {
   useEffect,
   useState,
@@ -856,193 +862,8 @@ function ResourceEditor({
   );
 }
 
-function KeyEditor({ item, products, onClose, onSaved, notify }: any) {
-  const [members, setMembers] = useState<any[]>([]),
-    [allowed, setAllowed] = useState<string[]>(["read", "write", "generate"]);
-  useEffect(() => {
-    void api("/auth/me")
-      .then((me) => {
-        setAllowed(me.scopes);
-        if (!item)
-          setData((d: any) => ({
-            ...d,
-            scopes: d.scopes.filter((s: string) => me.scopes.includes(s)),
-          }));
-        if (me.role === "admin")
-          void api("/members").then((r) => setMembers(r.items));
-      })
-      .catch(() => {});
-  }, [item]);
-  const [data, setData] = useState<any>(
-    item
-      ? {
-          name: item.name,
-          ownerId: item.ownerId,
-          note: item.note,
-          scopes: item.scopes,
-          productIds: item.productIds,
-          enabled: item.enabled,
-          expiresAt: item.expiresAt,
-        }
-      : {
-          name: "",
-          note: "",
-          scopes: ["read", "write", "generate"],
-          productIds: [],
-          enabled: true,
-          expiresAt: null,
-        },
-  );
-  const [busy, setBusy] = useState(false);
-  const field = (k: string, v: any) => setData({ ...data, [k]: v });
-  async function save() {
-    setBusy(true);
-    try {
-      await api(
-        "/api-keys" + (item ? "/" + item.id : ""),
-        item ? "PATCH" : "POST",
-        data,
-      );
-      notify("访问密钥已保存", "success");
-      onSaved();
-    } catch (e) {
-      notify((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Modal
-      title={item ? "编辑访问密钥" : "创建 Agent 访问密钥"}
-      onClose={onClose}
-    >
-      <div className="form-grid">
-        {members.length > 0 && (
-          <label className="span-2">
-            所属成员
-            <Select
-              value={data.ownerId ?? ""}
-              disabled={!!item}
-              onChange={(e) => field("ownerId", e.target.value || undefined)}
-            >
-              <option value="">当前成员</option>
-              {members
-                .filter((m) => m.active)
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} · {m.role}
-                  </option>
-                ))}
-            </Select>
-          </label>
-        )}
-        <label className="span-2">
-          名称
-          <input
-            autoFocus
-            value={data.name}
-            onChange={(e) => field("name", e.target.value)}
-            placeholder="例如：创意策划 Agent"
-          />
-        </label>
-        <label className="span-2">
-          备注
-          <textarea
-            value={data.note}
-            onChange={(e) => field("note", e.target.value)}
-          />
-        </label>
-        <label>
-          有效期
-          <input
-            type="datetime-local"
-            value={
-              data.expiresAt
-                ? new Date(
-                    new Date(data.expiresAt).getTime() -
-                      new Date().getTimezoneOffset() * 60000,
-                  )
-                    .toISOString()
-                    .slice(0, 16)
-                : ""
-            }
-            onChange={(e) =>
-              field(
-                "expiresAt",
-                e.target.value ? new Date(e.target.value).toISOString() : null,
-              )
-            }
-          />
-          <small>留空表示长期有效</small>
-        </label>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={data.enabled}
-            onChange={(e) => field("enabled", e.target.checked)}
-          />
-          启用密钥
-        </label>
-        <fieldset className="span-2">
-          <legend>允许操作</legend>
-          {[
-            ["read", "读取资料"],
-            ["write", "编辑创作"],
-            ["generate", "提交生成"],
-          ].map(([s, name]) => (
-            <label className="check-row" key={s}>
-              <input
-                type="checkbox"
-                checked={data.scopes.includes(s)}
-                disabled={!allowed.includes(s)}
-                onChange={(e) =>
-                  field(
-                    "scopes",
-                    e.target.checked
-                      ? [...data.scopes, s]
-                      : data.scopes.filter((x: string) => x !== s),
-                  )
-                }
-              />
-              {name}
-            </label>
-          ))}
-          <small>视频批准只允许人类审核，API Key 不具备此权限。</small>
-        </fieldset>
-        <fieldset className="span-2">
-          <legend>可访问产品</legend>
-          <small>不勾选表示全部产品；限定产品后不能创建新产品。</small>
-          {products.map((p: Item) => (
-            <label key={p.id} className="check-row">
-              <input
-                type="checkbox"
-                checked={data.productIds.includes(p.id)}
-                onChange={(e) =>
-                  field(
-                    "productIds",
-                    e.target.checked
-                      ? [...data.productIds, p.id]
-                      : data.productIds.filter((x: string) => x !== p.id),
-                  )
-                }
-              />
-              {p.title}
-            </label>
-          ))}
-        </fieldset>
-      </div>
-      <footer className="modal-actions">
-        <Button onClick={onClose}>取消</Button>
-        <Button
-          primary
-          disabled={!data.name || !data.scopes.length || busy}
-          onClick={save}
-        >
-          保存密钥
-        </Button>
-      </footer>
-    </Modal>
-  );
+function KeyEditor(props: any) {
+  return <KeyPermissionsEditor {...props} shell={Modal} />;
 }
 
 function ChannelEditor({ item, onClose, onSaved, notify }: any) {
@@ -2276,21 +2097,34 @@ export default function Workspace() {
                           </td>
                           <td>
                             <div className="tags">
-                              {k.scopes.map((s: string) => (
-                                <span key={s}>
-                                  {
-                                    {
-                                      read: "读取",
-                                      write: "编辑",
-                                      generate: "生成",
-                                    }[s]
-                                  }
-                                </span>
-                              ))}
+                              {permissionGroups
+                                .filter((g) =>
+                                  permissionsOf(k).some((p) =>
+                                    p.startsWith(g.id + "."),
+                                  ),
+                                )
+                                .map((g) => (
+                                  <span key={g.id}>{g.label}</span>
+                                ))}
                             </div>
+                            <details className="key-permission-details">
+                              <summary>
+                                完整授权（{permissionsOf(k).length} 项）
+                              </summary>
+                              <ul>
+                                {permissionCatalog
+                                  .filter((p) =>
+                                    permissionsOf(k).includes(p.id),
+                                  )
+                                  .map((p) => (
+                                    <li key={p.id}>{p.label}</li>
+                                  ))}
+                              </ul>
+                            </details>
                           </td>
                           <td>
-                            {k.productIds.length
+                            {k.productScopeMode === "selected" ||
+                            k.productIds.length
                               ? k.productIds.length + " 个产品"
                               : "全部产品"}
                           </td>

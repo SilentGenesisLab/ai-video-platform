@@ -1,3 +1,4 @@
+import { checkBatchPermission } from "./key-authorization";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
@@ -183,6 +184,7 @@ export async function validateEntry(
 export async function createBatch(actor: Actor, input: unknown, tx: Tx) {
   requireScope(actor, "generate");
   const data = batchInput.parse(input);
+  await checkBatchPermission(actor, data);
   productAccess(actor, data.productId);
   const product = await getResource(actor, data.productId, tx);
   assert(product.kind === "product", 422, "无效产品");
@@ -406,6 +408,7 @@ export async function generateMedia(actor: Actor, input: unknown, tx: Tx) {
         .default([]),
     })
     .parse(input);
+  await checkBatchPermission(actor, { kind: d.kind, entries: [d] });
   const preferred = d.kind === "image" ? "gpt-image-2.5" : "seedance-2.5";
   const channels = await tx.channel.findMany({
     where: { provider: "aicentre", enabled: true },

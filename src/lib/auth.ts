@@ -1,3 +1,4 @@
+import { legacyPermissions, permissionCatalog } from "./permissions";
 import type { User } from "@prisma/client";
 import { systemDb as db } from "./db";
 import { assert } from "./errors";
@@ -9,6 +10,8 @@ export type Actor = {
   type: "human" | "agent";
   role: string;
   scopes: string[];
+  permissions?: string[] | null;
+  productScopeMode?: string;
   productIds: string[];
   teamId: string;
   teamName: string;
@@ -69,6 +72,9 @@ export async function authenticate(req: Request): Promise<Actor> {
       const u = await db.user.findUnique({ where: { id: run.ownerId } });
       assert(u?.active, 401, "账号已停用");
       const actor = await teamActor(u, run.teamId);
+      let permissions = Array.isArray(run.permissions)
+        ? (run.permissions as string[])
+        : legacyPermissions(run.scopes);
       let scopes = run.scopes,
         productIds = run.productIds;
       if (run.sourceKeyId) {
@@ -85,7 +91,16 @@ export async function authenticate(req: Request): Promise<Actor> {
           401,
           "发起运行的 API Key 已失效",
         );
+        assert(
+          k.productScopeMode !== "selected" || k.productIds.length > 0,
+          403,
+          "产品范围无效",
+        );
         scopes = scopes.filter((s) => k.scopes.includes(s));
+        const current = Array.isArray(k.permissions)
+          ? (k.permissions as string[])
+          : legacyPermissions(k.scopes);
+        permissions = permissions.filter((p) => current.includes(p));
         if (k.productIds.length) {
           productIds = productIds.length
             ? productIds.filter((id) => k.productIds.includes(id))
@@ -93,6 +108,11 @@ export async function authenticate(req: Request): Promise<Actor> {
           assert(productIds.length, 403, "产品范围已撤销");
         }
       }
+      assert(
+        run.productScopeMode !== "selected" || productIds.length > 0,
+        403,
+        "产品范围已撤销",
+      );
       return {
         ...actor,
         id: run.id,
@@ -101,6 +121,15 @@ export async function authenticate(req: Request): Promise<Actor> {
         scopes: scopes.filter(
           (s) => actor.scopes.includes(s) && agentScopes.includes(s),
         ),
+        permissions: permissions.filter((p) =>
+          permissionCatalog.some(
+            (c) => c.id === p && actor.scopes.includes(c.scope),
+          ),
+        ),
+        productScopeMode:
+          productIds.length || run.productScopeMode === "selected"
+            ? "selected"
+            : "all",
         productIds,
         runId: run.id,
       };
@@ -118,6 +147,11 @@ export async function authenticate(req: Request): Promise<Actor> {
       401,
       "API Key 无效、过期或已撤销",
     );
+    assert(
+      k.productScopeMode !== "selected" || k.productIds.length > 0,
+      403,
+      "产品范围无效",
+    );
     const actor = await teamActor(k.owner, k.teamId);
     await db.apiKey.update({
       where: { id: k.id },
@@ -131,6 +165,15 @@ export async function authenticate(req: Request): Promise<Actor> {
       scopes: k.scopes.filter(
         (s) => actor.scopes.includes(s) && agentScopes.includes(s),
       ),
+      permissions: (Array.isArray(k.permissions)
+        ? (k.permissions as string[])
+        : legacyPermissions(k.scopes)
+      ).filter((p) =>
+        permissionCatalog.some(
+          (c) => c.id === p && actor.scopes.includes(c.scope),
+        ),
+      ),
+      productScopeMode: k.productScopeMode,
       productIds: k.productIds,
       keyId: k.id,
     };
@@ -195,7 +238,8 @@ export function requirePlatform(a: Actor) {
 }
 export function productAccess(a: Actor, id?: string | null) {
   assert(
-    !a.productIds.length || (!!id && a.productIds.includes(id)),
+    (a.productScopeMode !== "selected" && !a.productIds.length) ||
+      (!!id && a.productIds.includes(id)),
     403,
     "无权访问此产品",
     "PRODUCT_SCOPE",
@@ -204,7 +248,7 @@ export function productAccess(a: Actor, id?: string | null) {
 export function resourceFilter(a: Actor) {
   return {
     teamId: a.teamId,
-    ...(a.productIds.length
+    ...(a.productScopeMode === "selected" || a.productIds.length
       ? {
           OR: [
             { kind: "product", id: { in: a.productIds } },

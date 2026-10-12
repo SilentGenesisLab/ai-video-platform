@@ -1,3 +1,4 @@
+import { requirePermission } from "./permissions";
 import { db } from "./db";
 import { type Actor, productAccess, requireScope } from "./auth";
 import { assert } from "./errors";
@@ -9,6 +10,7 @@ export async function conversationAccess(
   tx: Tx = db,
 ) {
   requireScope(actor, "read");
+  requirePermission(actor, "chat.read");
   const c = await tx.conversation.findUnique({ where: { id } });
   assert(c && c.teamId === actor.teamId, 404, "会话不存在");
   assert(
@@ -38,6 +40,7 @@ export async function scopedAccess(
   }
 }
 export async function fileAccess(actor: Actor, id: string, tx: Tx = db) {
+  requirePermission(actor, "file.read");
   const file = await tx.fileObject.findUnique({ where: { id } });
   assert(file && file.teamId === actor.teamId, 404, "文件不存在");
   await scopedAccess(actor, file, tx);
@@ -48,7 +51,7 @@ export async function scopedFilter(actor: Actor) {
   const conversations = await db.conversation.findMany({
     where: {
       ownerId: actor.userId,
-      ...(actor.productIds.length
+      ...(actor.productScopeMode === "selected" || actor.productIds.length
         ? { productId: { in: actor.productIds } }
         : {}),
       ...(actor.runId ? { runs: { some: { id: actor.runId } } } : {}),
@@ -59,9 +62,10 @@ export async function scopedFilter(actor: Actor) {
     OR: [
       {
         conversationId: null,
-        productId: actor.productIds.length
-          ? { in: actor.productIds }
-          : { not: null },
+        productId:
+          actor.productScopeMode === "selected" || actor.productIds.length
+            ? { in: actor.productIds }
+            : { not: null },
       },
       { conversationId: { in: conversations.map((c) => c.id) } },
     ],

@@ -2,7 +2,7 @@
 name: ai-video-platform
 description: Manage products, briefs, creative batches, treatments, industrial storyboards, assets and production jobs in AI Video Platform. Use when the user asks to create or iterate video projects on this platform, upload materials, submit media generation, or inspect production results and provenance.
 metadata:
-  version: 1.4.2
+  version: 1.5.0
 ---
 
 # AI Video Platform
@@ -11,9 +11,9 @@ metadata:
 
 If this document was supplied as a web link, download the sibling package at `/skills/ai-video-platform.zip` from the same platform origin. Inspect the package and extract the `ai-video-platform` folder to this Agent's supported skill directory. For Codex use `$CODEX_HOME/skills` or `~/.codex/skills`; for other hosts use their documented skill directory. Do not change unrelated Agent configuration.
 
-Use the platform address and selected API key from the user's private connection instructions. Store them in private local configuration or the running environment as `AIVIDEO_BASE_URL` and `AIVIDEO_API_KEY`; do not put credentials in this skill or print them. Package version: **1.4.2**.
+Use the platform address and selected API key from the user's private connection instructions. Store them in private local configuration or the running environment as `AIVIDEO_BASE_URL` and `AIVIDEO_API_KEY`; do not put credentials in this skill or print them. Package version: **1.5.0**.
 
-Read `references/api.md` for API conventions. Authenticate requests with `Authorization: Bearer <AIVIDEO_API_KEY>`. Call `GET /api/v1/auth/me` first and report the effective scopes and product boundary, without echoing the credential. Connection validation does not create products or trigger generation.
+Read `references/api.md` for API conventions. Authenticate requests with `Authorization: Bearer <AIVIDEO_API_KEY>`. Call `GET /api/v1/auth/me` first and report the effective permissions, legacy scopes and explicit product boundary, without echoing the credential. Connection validation does not create products or trigger generation.
 
 ## Working on a project
 
@@ -42,10 +42,14 @@ For installation or API updates, compare this package's version with the platfor
 ## Conversation attachments and research
 
 Read `references/assistant.md` for resumable streams, private uploads, video analysis and web search. Analyze only when requested; preserve source citations and timestamp uncertainty.
-## Teams and credits (v1.4.2)
+## Teams and credits (v1.5.0)
 
 Your API Key is fixed to the team returned by `auth/me`. Browser team switches do not move the Key or an Agent run. Never mix object IDs, files, revisions or task references between teams. Revoked membership immediately removes access. Team administrators do not have platform administration rights.
 
 Before every media submission, POST the exact batch payload to `/api/v1/billing/quotes`. Show the amount and line items to the user, then include the returned `quoteId` in `/production-batches`. Quotes expire in ten minutes. A changed input, changed procurement price or expired quote requires a fresh quote and, for video, fresh human approval. Never reuse an approval for regeneration. Images reserve credits when submitted; video reserves only when a human approves.
 
 Read `/billing/wallet`, `/billing/usage` and `/billing/ledger` to inspect available/frozen credits and settlement. One RMB supplier cost is 100 credits. Missing prices use the platform default (initially 1 RMB per supplier request), explicitly labeled as estimated. /billing/wallet is the Key owner's global personal wallet; teams can allocate their pool credits to members. Browser team switches do not move the personal balance. On 402 pause and retain work; on 409 reread state before deciding whether a fresh request is appropriate. Unknown submission or cost retains frozen credits for human reconciliation. Polling, transfer retries and local storyboard overviews do not repurchase generation. Only image and video generation consume credits. Text conversations, search, attachment understanding and audio/music are free to users; supplier costs are still metered individually. New accounts receive 20000 personal credits once. Plain business reads/writes are free.
+
+## Module permissions (v1.5.0)
+
+Read `references/permissions.md` before operating with a restricted Key. The API checks `permissions` on every request, including idempotent retries; `scopes` are compatibility summaries, never a substitute for module authorization. Editing/generation requires the matching read permission. New production recommendations exclude audit logs and credit queries, so do not call those endpoints unless authorized. Use the free `/billing/quotes` endpoint with the matching generation permission; submitting video generation still requires human approval. API Keys cannot approve, manage members/Keys, change purchase rates or read provider credentials. Stop and report a 403; do not attempt another route to bypass it. Runtime permissions are intersected with current Key and team membership; narrowing or revocation is effective on subsequent requests.
