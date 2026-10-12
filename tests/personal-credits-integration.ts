@@ -9,6 +9,7 @@ import {
   reserveUsage,
   usageFromResult,
   settleUsage,
+  billingRoute,
 } from "../src/lib/billing";
 import { adminRoute } from "../src/lib/platform-admin";
 const url = new URL(process.env.DATABASE_URL!);
@@ -137,6 +138,13 @@ async function main() {
     "estimated",
   );
   pass("fallback invoice clearly identifies estimated cost");
+  const invoice = await billingRoute(ma, ["billing", "usage"], "GET", {});
+  const billed = invoice.items.find((u: any) => u.id === usage.id);
+  assert.equal(billed.payerUserId, member.id);
+  assert.equal(billed.payerKind, "user");
+  assert.equal(billed.teamId, team2.id);
+  assert.equal(billed.rateId, line.rateId);
+  pass("billing API exposes payer and immutable price version across teams");
   const second = await withTeam(team.id, () =>
     db.$transaction((tx) =>
       reserveUsage(tx, ma, "actual:" + stamp, line, "actual"),

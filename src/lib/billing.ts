@@ -571,6 +571,10 @@ export async function billingRoute(
           select: {
             id: true,
             actorId: true,
+            teamId: true,
+            payerKind: true,
+            payerUserId: true,
+            rateId: true,
             invocationId: true,
             kind: true,
             model: true,

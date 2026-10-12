@@ -3,10 +3,18 @@ export async function chooseSelect(scope: any, label: string, value: string) {
   const trigger = scope.getByRole("combobox", { name: label, exact: true });
   // Associate by labelled field when several selects share an option value.
   const field = trigger.locator("..");
-  const text = await field.locator(`option[value="${value}"]`).textContent();
+  const text = await field
+    .locator("select")
+    .evaluate(
+      (select: HTMLSelectElement, wanted: string) =>
+        Array.from(select.options).find((option) => option.value === wanted)
+          ?.textContent,
+      value,
+    );
+  expect(text, `Option ${value} in ${label}`).toBeTruthy();
   await trigger.click();
   const page = scope.page ? scope.page() : scope;
-  const option = page.getByRole("option", { name: text.trim(), exact: true });
+  const option = page.getByRole("option", { name: text!.trim(), exact: true });
   await expect(option).toBeVisible();
   await option.click();
 }

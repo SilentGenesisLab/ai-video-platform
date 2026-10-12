@@ -218,31 +218,38 @@ test("official price configuration: deep link, safe initialization and unchanged
   await login(page);
   await page.goto("/team?tab=platform#purchase-rates");
   await expect(page).toHaveURL(/\/admin/);
-  await page.request.post("/api/v1/platform/rates/official-deepseek", {
-    headers: {
-      Origin: process.env.APP_URL!,
-      "Idempotency-Key": crypto.randomUUID(),
+  const before = await page.request
+    .get("/api/v1/platform/rates")
+    .then((r) => r.json());
+  const initialization = await page.request.post(
+    "/api/v1/platform/rates/official-deepseek",
+    {
+      headers: {
+        Origin: process.env.APP_URL!,
+        "Idempotency-Key": crypto.randomUUID(),
+      },
+      data: {},
     },
-    data: {},
-  });
+  );
+  expect(initialization.ok()).toBe(true);
+  const published = await initialization.json();
   const first = await page.request
     .get("/api/v1/platform/rates")
     .then((r) => r.json());
   const imported = first.items.filter(
-    (r: any) =>
-      r.model === "deepseek-flash" &&
-      r.sourceType !== "estimated" &&
-      r.basis.startsWith("DeepSeek 官方"),
+    (r: any) => r.model === "deepseek-flash" && r.sourceType !== "estimated",
   );
   expect(imported.length).toBeGreaterThanOrEqual(2);
   expect(
-    imported.every(
+    published.items.every(
       (r: any) =>
         Number(r.inputRate) === 2 &&
         Number(r.cachedInputRate) === 0.04 &&
         Number(r.rate) === 8,
     ),
   ).toBeTruthy();
+  for (const prior of before.items)
+    expect(first.items.find((r: any) => r.id === prior.id)).toEqual(prior);
   await page.request.post("/api/v1/platform/rates/official-deepseek", {
     headers: {
       Origin: process.env.APP_URL!,

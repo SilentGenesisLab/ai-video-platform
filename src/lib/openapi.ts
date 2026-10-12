@@ -415,7 +415,11 @@ export function openapi() {
       "get",
       "Current user global personal balance and frozen credits",
     ],
-    ["/billing/usage", "get", "Current user model usage and settlement basis"],
+    [
+      "/billing/usage",
+      "get",
+      "Current user's global usage: teamId, payerKind, payerUserId, rateId and immutable quoteLine; Agent keys remain limited to their own team",
+    ],
     ["/billing/ledger", "get", "Current user immutable personal credit ledger"],
     [
       "/billing/quotes",

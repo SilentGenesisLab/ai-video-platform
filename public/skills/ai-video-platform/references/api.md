@@ -69,9 +69,14 @@ Query `/production-batches/{id}` and `/jobs/{id}`. Completed job `result.files` 
 ## Quote before submission
 
 ```js
-const quote = await platform('/billing/quotes', 'POST', batch);
+const quote = await platform("/billing/quotes", "POST", batch);
 // Present quote.amount, quote.lines and quote.expiresAt before submitting.
-const result = await platform('/production-batches', 'POST', {...batch, quoteId: quote.id});
+const result = await platform("/production-batches", "POST", {
+  ...batch,
+  quoteId: quote.id,
+});
 ```
 
 API keys cannot use `/teams`, `/invitations`, `/platform`, phone binding, human approvals or key management. The website's team switch does not change your key's team. `auth/me` includes `teamId`, `teamName`, `teamRole`, `scopes` and product boundaries. Capture that context before using existing object IDs.
+
+`GET /api/v1/billing/usage` 返回个人跨团队用量及 `teamId`、`payerKind`、`payerUserId`、`rateId` 和不可变 `quoteLine`；Agent Key 只能查看自身团队中的个人用量。

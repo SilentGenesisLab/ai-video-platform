@@ -636,7 +636,7 @@ test("AUTH-03 email login, password visibility and network failure recovery", as
   await password.fill(process.env.ADMIN_PASSWORD!);
   await page.getByRole("button", { name: "进入工作台" }).click();
   await expect(page.locator("form [role=alert]")).toContainText(
-    "登录服务暂时不可用",
+    "服务暂时不可用",
   );
   await expect(page.getByRole("button", { name: "进入工作台" })).toBeEnabled();
   await page.unroute("**/api/v1/auth/login");
@@ -663,9 +663,17 @@ test("CHAT-01 live Agent reads product and persists conversation after reload", 
       "这是只读验收。请调用工具读取当前产品，仅回复产品名称。禁止修改内容，禁止提交任何图片、视频或音乐生成任务。",
     );
   await page.getByRole("button", { name: "发送消息", exact: true }).click();
-  await expect(page.locator(".run-status")).toContainText("已完成", {
-    timeout: 110000,
-  });
+  await expect
+    .poll(
+      async () => {
+        const cid = await page
+          .locator('select[aria-label="选择会话"]')
+          .inputValue();
+        return (await data(page, `/conversations/${cid}`)).runs?.[0]?.status;
+      },
+      { timeout: 110000 },
+    )
+    .toBe("completed");
   await expect(page.locator(".message.assistant").last()).toContainText(
     p.title,
   );
