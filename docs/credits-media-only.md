@@ -7,3 +7,12 @@
 - 修复线上两次创作搭档因个人余额不足暂停：免费请求不再要求正余额，旧会话可点继续。
 
 验证包含：TypeScript 与生产构建、42 个单元测试、团队 HTTP 37 项、模拟供应商流式与幂等、个人钱包守恒/并发/零余额/历史兼容；Playwright 检查创建赠送、Enter 真实流、Shift+Enter 和输入法。
+
+## 上线验收（2026-10-13）
+
+- 部署镜像：v1.4.1-credits-0d7e648；HTTPS 健康检查返回 1.4.1，web/worker/agent 均运行。
+- 合并保留仓库同期 TVC 视觉改版，无覆盖其他提交。
+- 本地：42 单元测试、37 团队 HTTP 检查、16 个人钱包检查、供应商计量/恢复检查及 3 个定向 Playwright 用例通过。
+- 线上：Enter 真实 DeepSeek 流式对话及 Shift+Enter/输入法检查通过；完成前收到多个增量。对话前后余额相同。
+- 线上新请求账单：settled，reserved=0，charged=0，供应商计算成本 0.00357248 元，策略 media-only-v1；历史账单不改写。
+- 备份：/opt/ai-video-platform/backups/pre-v1.4.1-fe1c6ff（数据库、配置及源码）；本次无需数据库迁移。
