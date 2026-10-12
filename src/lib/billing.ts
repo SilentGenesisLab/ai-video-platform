@@ -1,3 +1,4 @@
+import { deepseekOfficialPrice } from "./official-prices";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, systemDb, withTeam } from "./db";
@@ -502,6 +503,47 @@ export async function billingRoute(
           orderBy: { createdAt: "desc" },
         }),
       };
+    if (id === "rates" && action === "official-deepseek" && method === "POST") {
+      const channels = await systemDb.channel.findMany({
+        where: { provider: "deepseek", enabled: true },
+      });
+      const items = [],
+        skipped = [];
+      for (const c of channels) {
+        if (c.baseUrl.replace(/\/$/, "") !== "https://api.deepseek.com")
+          continue;
+        for (const kind of ["text", "vision"] as const) {
+          if (!(c.models as any)[kind]?.includes(deepseekOfficialPrice.model))
+            continue;
+          const existing = await systemDb.purchaseRate.findFirst({
+            where: {
+              channelId: c.id,
+              model: deepseekOfficialPrice.model,
+              kind,
+              supplier: "",
+              resolution: "",
+            },
+          });
+          if (existing) {
+            skipped.push(existing.id);
+            continue;
+          }
+          items.push(
+            await saveRate(a, {
+              channelId: c.id,
+              kind,
+              model: deepseekOfficialPrice.model,
+              unit: "token",
+              rate: deepseekOfficialPrice.rate,
+              inputRate: deepseekOfficialPrice.inputRate,
+              cachedInputRate: deepseekOfficialPrice.cachedInputRate,
+              basis: deepseekOfficialPrice.basis,
+            }),
+          );
+        }
+      }
+      return { items, skipped, source: deepseekOfficialPrice.source };
+    }
     if (id === "rates" && method === "POST") return saveRate(a, body);
     if (id === "teams" && method === "GET") {
       const teams = await systemDb.team.findMany({

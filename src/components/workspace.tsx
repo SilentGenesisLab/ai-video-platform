@@ -1,4 +1,5 @@
 "use client";
+import Select from "./select";
 import {
   useEffect,
   useState,
@@ -462,7 +463,7 @@ function ContentFields({ content, setContent }: any) {
             ) : ["category", "aspectRatio", "resolution"].includes(key) ? (
               <label>
                 {fieldLabels[key]}
-                <select
+                <Select
                   value={String(value)}
                   onChange={(e) =>
                     setContent({ ...content, [key]: e.target.value })
@@ -482,7 +483,7 @@ function ContentFields({ content, setContent }: any) {
                   ).map((x) => (
                     <option key={x}>{x}</option>
                   ))}
-                </select>
+                </Select>
               </label>
             ) : (
               <label>
@@ -657,7 +658,7 @@ function ResourceEditor({
                 </label>
                 <label>
                   状态
-                  <select
+                  <Select
                     aria-label="状态"
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
@@ -669,12 +670,12 @@ function ResourceEditor({
                         </option>
                       ),
                     )}
-                  </select>
+                  </Select>
                 </label>
                 {route !== "products" && (
                   <label>
                     所属产品
-                    <select
+                    <Select
                       value={pid}
                       disabled={!!item}
                       onChange={(e) => {
@@ -689,7 +690,7 @@ function ResourceEditor({
                           {p.title}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 )}
                 {["storyboards", "assets", "scripts", "deliverables"].includes(
@@ -697,7 +698,7 @@ function ResourceEditor({
                 ) && (
                   <label>
                     关联策划案
-                    <select
+                    <Select
                       value={planId}
                       disabled={!!item}
                       onChange={(e) => setPlanId(e.target.value)}
@@ -710,7 +711,7 @@ function ResourceEditor({
                             {p.title}
                           </option>
                         ))}
-                    </select>
+                    </Select>
                   </label>
                 )}
                 {["concepts", "plans"].includes(route) && (
@@ -906,7 +907,7 @@ function KeyEditor({ item, products, onClose, onSaved, notify }: any) {
         {members.length > 0 && (
           <label className="span-2">
             所属成员
-            <select
+            <Select
               value={data.ownerId ?? ""}
               disabled={!!item}
               onChange={(e) => field("ownerId", e.target.value || undefined)}
@@ -919,7 +920,7 @@ function KeyEditor({ item, products, onClose, onSaved, notify }: any) {
                     {m.name} · {m.role}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
         )}
         <label className="span-2">
@@ -1098,7 +1099,7 @@ function ChannelEditor({ item, onClose, onSaved, notify }: any) {
           ))}
           <label>
             适配器
-            <select
+            <Select
               value={data.provider}
               onChange={(e) => {
                 const provider = e.target.value;
@@ -1136,7 +1137,7 @@ function ChannelEditor({ item, onClose, onSaved, notify }: any) {
               <option value="deepseek">DeepSeek</option>
               <option value="volcengine">火山方舟 · 豆包视频理解</option>
               <option value="bocha">博查 · 联网搜索</option>
-            </select>
+            </Select>
           </label>
           <label>
             并发上限
@@ -1293,7 +1294,7 @@ function GenerationDialog({
         </label>
         <label>
           制作类型
-          <select
+          <Select
             value={data.kind}
             onChange={(e) =>
               setData({
@@ -1311,11 +1312,11 @@ function GenerationDialog({
             <option value="image">图片资产 / 分镜图</option>
             <option value="video">视频片段 · 需审批</option>
             <option value="audio">音乐 / 音效</option>
-          </select>
+          </Select>
         </label>
         <label>
           产品
-          <select
+          <Select
             aria-label="产品"
             value={data.productId}
             onChange={(e) =>
@@ -1335,11 +1336,11 @@ function GenerationDialog({
                 {p.title}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           策划案
-          <select
+          <Select
             aria-label="策划案"
             value={data.planId}
             onChange={(e) => set("planId", e.target.value)}
@@ -1352,11 +1353,11 @@ function GenerationDialog({
                   {p.title}
                 </option>
               ))}
-          </select>
+          </Select>
         </label>
         <label>
           生成渠道
-          <select
+          <Select
             value={data.channelId}
             onChange={(e) => set("channelId", e.target.value)}
           >
@@ -1367,11 +1368,11 @@ function GenerationDialog({
                   {c.name}
                 </option>
               ))}
-          </select>
+          </Select>
         </label>
         <label>
           模型
-          <select
+          <Select
             aria-label="模型"
             value={data.model}
             onChange={(e) => set("model", e.target.value)}
@@ -1383,7 +1384,7 @@ function GenerationDialog({
             ).map((m: string) => (
               <option key={m}>{m}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="span-2">
           制作提示词
@@ -1419,14 +1420,14 @@ function GenerationDialog({
         {data.kind !== "audio" && (
           <label>
             画幅
-            <select
+            <Select
               value={data.aspectRatio}
               onChange={(e) => set("aspectRatio", e.target.value)}
             >
               {["16:9", "9:16", "1:1", "4:3", "3:4"].map((x) => (
                 <option key={x}>{x}</option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         {data.kind === "video" && (
@@ -1443,14 +1444,14 @@ function GenerationDialog({
             </label>
             <label>
               分辨率
-              <select
+              <Select
                 value={data.resolution}
                 onChange={(e) => set("resolution", e.target.value)}
               >
                 {["480p", "720p", "1080p"].map((x) => (
                   <option key={x}>{x}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="check-row">
               <input
@@ -1810,7 +1811,13 @@ export default function Workspace() {
       <aside className="sidebar">
         <a className="brand" href="/studio/products">
           <span className="brand-mark">
-            <img src="/brand/frameflow-mark.png" width={34} height={34} alt="" style={{ borderRadius: 9 }} />
+            <img
+              src="/brand/frameflow-mark.png"
+              width={34}
+              height={34}
+              alt=""
+              style={{ borderRadius: 9 }}
+            />
           </span>
           frameflow<span className="brand-dot">.</span>
         </a>
@@ -2176,7 +2183,7 @@ export default function Workspace() {
                 </div>
                 <div>
                   {!["products", "keys", "channels"].includes(section) && (
-                    <select
+                    <Select
                       aria-label="按产品筛选"
                       value={productId}
                       onChange={(e) => {
@@ -2190,7 +2197,7 @@ export default function Workspace() {
                           {p.title}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   )}
                   {planFilter && (
                     <Button onClick={() => setPlanFilter("")}>
@@ -2487,6 +2494,16 @@ export default function Workspace() {
                           <td>{date(i.createdAt)}</td>
                           <td className="truncate">
                             {i.error ?? i.actualChannel ?? i.entityId ?? "—"}
+                            {i.error && /采购价|转写型号/.test(i.error) && (
+                              <a
+                                className="price-config-link"
+                                href="/team?tab=platform#purchase-rates"
+                              >
+                                {actor?.platformAdmin
+                                  ? "配置采购价"
+                                  : "查看配置说明"}
+                              </a>
+                            )}
                           </td>
                           <td>
                             <Button
@@ -2511,64 +2528,75 @@ export default function Workspace() {
                   }
                 >
                   {filtered.map((item: Item) => (
-                    <article key={item.id} className="resource-card">
-                      <div
-                        className="card-media"
-                        onClick={() =>
-                          route === "products"
-                            ? router.push(`/studio/products/${item.id}`)
-                            : setEditor({ route, item })
-                        }
-                      >
-                        {route === "products" ||
-                        route === "assets" ||
-                        route === "deliverables" ? (
-                          <FilePreview
-                            id={
-                              item.content.coverFileId ??
-                              item.content.selectedFileId ??
-                              item.content.fileId
-                            }
-                            compact
-                          />
-                        ) : route === "storyboards" ? (
-                          <div className="board-mini">
-                            {Array.from({ length: 9 }, (_, i) => (
-                              <div key={i}>
-                                {item.content.shots[i]?.imageFileId && (
-                                  <FilePreview
-                                    id={item.content.shots[i].imageFileId}
-                                    compact
-                                  />
-                                )}
-                                <span>{String(i + 1).padStart(2, "0")}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className={"text-cover " + route}>
-                            <span>
-                              {route === "concepts"
-                                ? "THE BIG IDEA"
-                                : route === "plans"
+                    <article
+                      key={item.id}
+                      className={
+                        "resource-card " +
+                        (route === "concepts" ? "concept-card" : "")
+                      }
+                    >
+                      {route === "concepts" ? (
+                        <div className="concept-card-status">
+                          <Badge status={item.status} />
+                          <span className="version">V{item.version}</span>
+                        </div>
+                      ) : (
+                        <div
+                          className="card-media"
+                          onClick={() =>
+                            route === "products"
+                              ? router.push(`/studio/products/${item.id}`)
+                              : setEditor({ route, item })
+                          }
+                        >
+                          {route === "products" ||
+                          route === "assets" ||
+                          route === "deliverables" ? (
+                            <FilePreview
+                              id={
+                                item.content.coverFileId ??
+                                item.content.selectedFileId ??
+                                item.content.fileId
+                              }
+                              compact
+                            />
+                          ) : route === "storyboards" ? (
+                            <div className="board-mini">
+                              {Array.from({ length: 9 }, (_, i) => (
+                                <div key={i}>
+                                  {item.content.shots[i]?.imageFileId && (
+                                    <FilePreview
+                                      id={item.content.shots[i].imageFileId}
+                                      compact
+                                    />
+                                  )}
+                                  <span>{String(i + 1).padStart(2, "0")}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className={"text-cover " + route}>
+                              <span>
+                                {route === "plans"
                                   ? "CREATIVE TREATMENT"
                                   : route === "scripts"
                                     ? "PRODUCTION SCRIPT"
                                     : "CREATIVE BATCH"}
-                            </span>
-                            <h3>
-                              {item.content.idea ??
-                                item.content.message ??
-                                item.title}
-                            </h3>
-                            <ArrowUpRight size={24} />
+                              </span>
+                              <h3>
+                                {item.content.idea ??
+                                  item.content.message ??
+                                  item.title}
+                              </h3>
+                              <ArrowUpRight size={24} />
+                            </div>
+                          )}
+                          <div className="card-media-top">
+                            <Badge status={item.status} />
+                            <span className="version">V{item.version}</span>
                           </div>
-                        )}
-                        <div className="card-media-top">
-                          <Badge status={item.status} />
-                          <span className="version">V{item.version}</span>
                         </div>
-                      </div>
+                      )}
                       <div className="card-body">
                         <h3>
                           {route === "products" ? (
@@ -2589,19 +2617,31 @@ export default function Workspace() {
                             !item.content.sourceJobIds?.length && (
                               <span className="badge">追溯信息不完整</span>
                             )}
-                          {item.content.description ??
-                            item.content.hook ??
-                            item.content.objective ??
-                            item.content.purpose ??
-                            (item.content.shots
-                              ? item.content.shots.length + " 个镜头"
-                              : "每一步创作都有迹可循")}
+                          {route === "concepts"
+                            ? item.content.insight ||
+                              item.content.idea ||
+                              "待补充创意洞察"
+                            : (item.content.description ??
+                              item.content.hook ??
+                              item.content.objective ??
+                              item.content.purpose ??
+                              (item.content.shots
+                                ? item.content.shots.length + " 个镜头"
+                                : "每一步创作都有迹可循"))}
                         </p>
                         <div className="card-meta">
                           <span>
                             <Clock size={13} />
                             {date(item.updatedAt)}
                           </span>
+                          {route === "concepts" && (
+                            <span className="concept-score">
+                              评分{" "}
+                              {item.content.score === undefined
+                                ? "待评分"
+                                : `${item.content.score} / 10`}
+                            </span>
+                          )}
                           <button
                             className="icon-button"
                             aria-label="复制对象 ID"
@@ -3075,7 +3115,7 @@ function MembersDialog({ members, onClose, notify, refresh }: any) {
                 <td>{m.name}</td>
                 <td>{m.email}</td>
                 <td>
-                  <select
+                  <Select
                     aria-label={"角色 " + m.name}
                     value={m.role}
                     onChange={(e) =>
@@ -3087,7 +3127,7 @@ function MembersDialog({ members, onClose, notify, refresh }: any) {
                     {["admin", "editor", "reviewer", "viewer"].map((r) => (
                       <option key={r}>{r}</option>
                     ))}
-                  </select>
+                  </Select>
                 </td>
                 <td>
                   <input
@@ -3132,7 +3172,7 @@ function MembersDialog({ members, onClose, notify, refresh }: any) {
         ))}
         <label>
           角色
-          <select
+          <Select
             value={newMember.role}
             onChange={(e) =>
               setNewMember({ ...newMember, role: e.target.value })
@@ -3141,7 +3181,7 @@ function MembersDialog({ members, onClose, notify, refresh }: any) {
             {["editor", "reviewer", "viewer", "admin"].map((r) => (
               <option key={r}>{r}</option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
       <footer className="modal-actions">

@@ -1,4 +1,5 @@
 "use client";
+import Select from "./select";
 import {
   createContext,
   useContext,
@@ -771,7 +772,7 @@ function AssistantPanel({
         </button>
       </header>
       <div className="chat-select">
-        <select
+        <Select
           aria-label="选择会话"
           disabled={!hydrated}
           value={id}
@@ -783,7 +784,7 @@ function AssistantPanel({
               {c.title}
             </option>
           ))}
-        </select>
+        </Select>
         <button
           className="icon-button"
           aria-label="新对话"
@@ -1064,7 +1065,7 @@ function AssistantPanel({
         >
           <h3>保存附件到产品</h3>
           <p>{saveFile.name}</p>
-          <select
+          <Select
             aria-label="目标产品"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
@@ -1074,7 +1075,7 @@ function AssistantPanel({
                 {p.title}
               </option>
             ))}
-          </select>
+          </Select>
           <div>
             <button className="button" onClick={() => setSaveFile(null)}>
               取消

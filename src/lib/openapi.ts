@@ -389,6 +389,12 @@ export function openapi() {
     ],
     ["/platform/rates", "get", "Platform admin: procurement price versions"],
     [
+      "/platform/rates/official-deepseek",
+      "post",
+      "Platform admin: initialize missing verified DeepSeek CNY ceiling rates without overwriting existing prices",
+      obj({}),
+    ],
+    [
       "/platform/rates",
       "post",
       "Platform admin: append RMB procurement price",

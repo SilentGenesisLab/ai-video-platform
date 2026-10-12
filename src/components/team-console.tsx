@@ -1,4 +1,6 @@
 "use client";
+import Select from "./select";
+import { deepseekOfficialPrice } from "../lib/official-prices";
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { Brand } from "./landing";
@@ -36,6 +38,15 @@ export default function TeamConsole() {
     try {
       const a = await api("/auth/me");
       setActor(a);
+      if (
+        new URLSearchParams(window.location.search).get("tab") === "platform"
+      ) {
+        if (a.platformAdmin) setTab("platform");
+        else
+          setError(
+            "采购价由平台管理员统一配置，请将缺失型号与失败日志发送给管理员。",
+          );
+      }
       const [t, m, w, u, l] = await Promise.all([
         api("/teams"),
         api(`/teams/${a.teamId}/members`),
@@ -237,7 +248,7 @@ export default function TeamConsole() {
                       required
                       pattern="1[3-9][0-9]{9}"
                     />
-                    <select
+                    <Select
                       name="role"
                       aria-label="邀请角色"
                       defaultValue="editor"
@@ -253,7 +264,7 @@ export default function TeamConsole() {
                             {n}
                           </option>
                         ))}
-                    </select>
+                    </Select>
                     <button className="button primary" disabled={busy}>
                       生成邀请链接
                     </button>
@@ -316,7 +327,7 @@ export default function TeamConsole() {
                   m.role !== "owner" &&
                   m.userId !== actor?.userId ? (
                     <>
-                      <select
+                      <Select
                         aria-label={`${m.user?.name}的角色`}
                         disabled={busy}
                         value={m.role}
@@ -343,7 +354,7 @@ export default function TeamConsole() {
                               {n}
                             </option>
                           ))}
-                      </select>
+                      </Select>
                       <button
                         className="button"
                         disabled={busy}
@@ -542,7 +553,42 @@ export default function TeamConsole() {
           )}
           {tab === "platform" && actor?.platformAdmin && (
             <>
-              <h2>采购价配置</h2>
+              <h2 id="purchase-rates">采购价配置</h2>
+              <div className="official-pricing-panel">
+                <strong>DeepSeek 官方人民币价格</strong>
+                <p>
+                  deepseek-flash · 每百万 Token：输入 2 元、缓存命中 0.04
+                  元、输出 8
+                  元（高峰）。空闲时段为一半，当前按高峰上限报价和计算，并非供应商实际账单。
+                </p>
+                <p>
+                  <a
+                    href={deepseekOfficialPrice.source}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    官方价格依据
+                  </a>{" "}
+                  · 核验日期 {deepseekOfficialPrice.checkedAt}
+                </p>
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(
+                      () =>
+                        api("/platform/rates/official-deepseek", "POST", {}),
+                      "已补齐缺失的 DeepSeek 文本与识图采购价；已有价格未覆盖",
+                    )
+                  }
+                >
+                  补齐文本与识图采购价
+                </button>
+                <p className="muted">
+                  AI Centre
+                  转写未公开采购价，需供应商确认后配置；不按免费处理。价格保存后，在原文件点击重试解析。
+                </p>
+              </div>
               <p className="muted">
                 价格仅追加版本。空供应商的价格须覆盖该渠道自动路由的合同采购成本；Token
                 单位为每百万，视频为每秒。已冻结任务保留原报价。
@@ -569,13 +615,13 @@ export default function TeamConsole() {
               >
                 <label>
                   渠道
-                  <select name="channelId" required>
+                  <Select name="channelId" required>
                     {channels.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   型号
@@ -592,7 +638,7 @@ export default function TeamConsole() {
                 </label>
                 <label>
                   能力
-                  <select name="kind">
+                  <Select name="kind">
                     {[
                       "text",
                       "vision",
@@ -604,15 +650,15 @@ export default function TeamConsole() {
                     ].map((s) => (
                       <option key={s}>{s}</option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   计价单位
-                  <select name="unit">
+                  <Select name="unit">
                     {["token", "image", "second", "request"].map((s) => (
                       <option key={s}>{s}</option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   单价 / 输出价（元）
@@ -714,7 +760,7 @@ export default function TeamConsole() {
               >
                 <label>
                   团队
-                  <select name="teamId">
+                  <Select name="teamId">
                     {allTeams
                       .filter((t) => !t.archived)
                       .map((t) => (
@@ -722,7 +768,7 @@ export default function TeamConsole() {
                           {t.name} · {money(t.wallet?.balance)} 分
                         </option>
                       ))}
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   调整积分（负数为扣减）
