@@ -15,7 +15,7 @@ import {
   Camera,
   FileText,
 } from "lucide-react";
-import { api } from "./api";
+import { api, readApiResponse } from "./api";
 import { PasswordInput, SmsCode } from "./auth-form";
 import { accountLinks } from "./account-links";
 const roleNames: Record<string, string> = {
@@ -27,7 +27,7 @@ const roleNames: Record<string, string> = {
 };
 async function upload(path: string, form: FormData) {
   const r = await fetch("/api/v1" + path, { method: "POST", body: form });
-  const data = await r.json();
+  const data = await readApiResponse(r);
   if (!r.ok) throw new Error(data.error?.message ?? "提交失败");
   return data;
 }
