@@ -83,3 +83,16 @@ npx tsx --env-file=.env tests/skill-install.ts
 复现补充：`node --import tsx --env-file=.env tests/idempotency-integration.ts` 和 `tests/assistant-billing-integration.ts`。团队脚本原有隔离环境继续可用；本地 `127.0.0.1:3000` / `127.0.0.1:55432/aivideo` 测试库需显式设置 `ALLOW_LOCAL_REVIEW_TESTS=1` 才允许运行团队脚本。真实文本浏览器用例需要先在隔离测试库配置明确标记为测试数据的采购价，不能将测试价复制到生产。视频、搜索供应商真实连通性沿用前述验收，合并后的计费故障路径使用模拟响应验证。
 
 本次交付为代码审查和仓库合并，未切换生产。前述 911cd67 Linux 镜像是助手合并前的构建，不能当作 1.3.0 最终镜像上线。部署合并版本需重新构建应用和 Agent，备份数据库并应用缺少的迁移，配置实际采购价后验证 HTTPS 流式、团队权限和钱包。
+
+
+## 生产部署验收（2026-10-12）
+
+1.3.0 已部署至 https://aivideo.sligenai.cn。应用构建源为 `2ded4b1`，Agent 修复源为 `af15818`；后者只修改 Agent 的错误体读取和回归测试，Web/Worker 继续使用 `v1.3-2ded4b1` 的已验证应用镜像，另保留等价 `v1.3-af15818` 标签。Agent 运行 `v1.3-af15818`。服务端配置与既有 PostgreSQL/Redis 卷保持原值。
+
+独立构建目录 `/opt/ai-video-platform-releases/v1.3-2ded4b1`；最终构建和发布退出码均为 0。构建发现合并时应用版本替换误改了锁文件内的依赖元数据，已恢复原始依赖记录，只更新应用根版本；服务器全新 npm ci、Prisma 生成、Skill 构建、Next.js 编译均通过。
+
+升级前备份位于 `/opt/ai-video-platform/backups/pre-v1.3-a2f4447/`，包含数据库、私有环境配置、旧镜像标识、Nginx 配置与源码。数据库备份在隔离临时数据库恢复成功：143 个 Resource、277 个 Revision、16 个 FileObject；验证后删除临时数据库。切换前另保存 `database-final.dump`。已应用 `20261012050000_creative_assistant` 和 `20261012070000_assistant_team_scope`，既有团队计费迁移保留。
+
+线上验收：16 项 HTTP 检查通过，包括 HTTPS/重定向、管理员登录与安全 Cookie、四类启用渠道、内部接口公网 404、OpenAPI/Skill 1.3.0、无产品会话、非法 SSE 游标 422、无缓冲实时心跳、运行提交与持久游标。Playwright 2/2：主画面无位移、面板拖宽与宽度记忆、跨路由/刷新草稿、手机全屏、会话附件上传后延迟解析及移除。Python 7/7；错误状态读取在关闭流之前缓存，缺采购价时正确暂停而不购买供应商请求。
+
+生产 PurchaseRate 仍为空。管理员需要录入真实采购价后才可使用付费模型；此次没有将隔离测试采购价写入生产，也没有将 SSE 心跳验收称为线上模型正文生成验收。真实模型正文、搜索和视频付费链路待价格配置后验收。现有证书有效至 2027-01-09，Nginx 已关闭代理缓冲、读取超时 300 秒并限制公网内部接口。
