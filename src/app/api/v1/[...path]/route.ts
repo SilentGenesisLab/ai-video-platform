@@ -1,5 +1,6 @@
 import { meteredStream } from "@/lib/metered-stream";
 import { meteredCall } from "@/lib/metering";
+import { personalRoute } from "@/lib/personal";
 import { billingRoute } from "@/lib/billing";
 import { accountRoute } from "@/lib/accounts";
 import { teamRoute } from "@/lib/teams";
@@ -198,6 +199,8 @@ async function handle(
     }
     const actor = await authenticate(req);
     return await withTeam(actor.teamId, async () => {
+      const personal = await personalRoute(req, actor, parts, body);
+      if (personal !== undefined) return ok(personal);
       const billed = await billingRoute(actor, parts, method, body);
       if (billed !== undefined) return ok(billed);
       if (["teams", "invitations"].includes(group)) {

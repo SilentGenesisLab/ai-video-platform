@@ -51,6 +51,7 @@ import {
 import Markdown from "react-markdown";
 import { useAssistant } from "./assistant";
 import ProductDetail from "./product-detail";
+import AccountMenu from "./account-menu";
 import { api, Item, labels } from "./api";
 const navigation = [
   {
@@ -1873,25 +1874,7 @@ export default function Workspace() {
             <Users size={16} />
             团队、积分与账号
           </a>
-          <div className="user-row">
-            <span>{actor?.name?.[0] ?? "S"}</span>
-            <div>
-              <b>{actor?.name ?? "加载中"}</b>
-              <small>{actor?.role ?? "工作室"}</small>
-            </div>
-            <button
-              aria-label="退出登录"
-              className="icon-button"
-              onClick={() =>
-                confirmLeaveProduct() &&
-                api("/auth/logout", "POST", {}).then(
-                  () => (window.location.href = "/login"),
-                )
-              }
-            >
-              <LogOut size={17} />
-            </button>
-          </div>
+          <AccountMenu actor={actor} canLeave={confirmLeaveProduct} onProfileChange={name=>setActor((a:any)=>({...a,name}))}/>
         </div>
       </aside>
       <main className="main">

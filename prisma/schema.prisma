@@ -11,12 +11,24 @@ model User {
   phone String? @unique
   platformAdmin Boolean @default(false)
   name String
+  avatarKey String?
   passwordHash String
   role String @default("editor")
   active Boolean @default(true)
   createdAt DateTime @default(now())
   sessions Session[]
   keys ApiKey[]
+}
+model Feedback {
+  id String @id @default(uuid())
+  teamId String
+  userId String
+  type String
+  content String
+  attachments Json @default("[]")
+  createdAt DateTime @default(now())
+  @@index([teamId, createdAt])
+  @@index([userId, createdAt])
 }
 model Session {
   teamId String @default("legacy-team")
