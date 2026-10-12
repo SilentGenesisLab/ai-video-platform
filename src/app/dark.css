@@ -1,0 +1,451 @@
+/* All studio surfaces, including dialogs rendered outside the workspace tree. */
+html[data-studio-theme="dark"]
+  :is(
+    .workspace,
+    .team-console,
+    .modal,
+    .chat-panel,
+    .account-dialog,
+    .account-popover,
+    .toast
+  ) {
+  color-scheme: dark;
+  --bg: #18251f;
+  --surface: #24352d;
+  --ink: #e5eee8;
+  --text: #e5eee8;
+  --muted: #a6b8ad;
+  --line: #3d5045;
+  --dark: #1d2729;
+  --raised: #2c4135;
+  --input: #203128;
+  color: var(--ink);
+}
+html[data-studio-theme="dark"] .workspace :is(.main, .topbar) {
+  background: var(--bg);
+  color: var(--ink);
+}
+html[data-studio-theme="dark"]
+  .workspace
+  :is(
+    .empty,
+    .channel-card,
+    .resource-card,
+    .stats > div,
+    .table-wrap,
+    .card,
+    .panel,
+    .metric-card,
+    .stat-card,
+    .table-card,
+    .intro-banner,
+    .skill-banner,
+    .search,
+    .pd-panel,
+    .pd-row,
+    .pd-brief,
+    .pd-material,
+    .pd-markdown-preview
+  ) {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"]
+  .workspace
+  :is(h1, h2, h3, .topbar b, td b, .pd-stat strong) {
+  color: var(--ink);
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal, .chat-panel, .account-dialog, .team-console)
+  :is(input, textarea, select) {
+  background: var(--input);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal, .chat-panel, .account-dialog, .team-console)
+  :is(input, textarea)::placeholder {
+  color: #99ad9f;
+  opacity: 1;
+}
+html[data-studio-theme="dark"] .workspace .search input {
+  background: transparent;
+  color: var(--ink);
+}
+html[data-studio-theme="dark"]
+  .workspace
+  :is(
+    .count,
+    .version,
+    .tags span,
+    .channel-logo,
+    .empty-art > div,
+    .pd-row-head,
+    .pd-mode button,
+    .pd-preview-placeholder,
+    .file-preview,
+    .board-mini > div,
+    .skill-icon,
+    .pd-history-revision dl
+  ) {
+  background: var(--raised);
+  color: #c5d5c9;
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"] .workspace :is(.empty-art i, .art-card) {
+  border-color: var(--surface);
+}
+html[data-studio-theme="dark"]
+  .workspace
+  :is(
+    .card-media,
+    .text-cover,
+    .text-cover.plans,
+    .text-cover.scripts,
+    .board-mini,
+    .media-placeholder,
+    .pd-cover-placeholder,
+    .pd-preview
+  ) {
+  background: #304536;
+  color: #b0c6ac;
+}
+html[data-studio-theme="dark"]
+  .workspace
+  :is(
+    .eyebrow,
+    .card-body p,
+    .card-meta,
+    .page-heading p,
+    .channel-models span,
+    .channel-models p,
+    .channel-card footer,
+    .pd-field,
+    .pd-heading p,
+    .pd-badges,
+    .pd-intro,
+    .pd-number,
+    .pd-row-toggle > span:last-child,
+    .pd-empty,
+    .pd-extracted,
+    .pd-file-links,
+    .pd-history-revision dt,
+    .raw-details > summary,
+    .history summary span,
+    .approval-entry > small
+  ) {
+  color: var(--muted);
+}
+html[data-studio-theme="dark"] .workspace :is(.tabs button, .pd-tabs button) {
+  color: #a6b8ad;
+}
+html[data-studio-theme="dark"]
+  .workspace
+  :is(.tabs button.active, .pd-tabs button.active, .pd-mode button.active) {
+  color: #c5f17b;
+  border-color: #a8ce76;
+}
+html[data-studio-theme="dark"]
+  .workspace
+  :is(
+    .intro-banner button,
+    .resource-card > footer button,
+    .skill-banner p,
+    .skill-banner .mini-label,
+    .pd-back,
+    .pd-file-links a,
+    .pd-reference-link,
+    .pd-history-revision summary
+  ) {
+  color: #b8cf9e;
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal, .team-console, .account-dialog)
+  .button {
+  background: var(--raised);
+  border-color: var(--line);
+  color: var(--ink);
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal, .team-console)
+  .button:hover {
+  background: #38513f;
+  border-color: #7f9d68;
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal, .team-console)
+  .button.primary {
+  background: #c5f17b;
+  color: #203018;
+  border-color: #c5f17b;
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal, .chat-panel)
+  :is(
+    .icon-button,
+    .form-grid label small,
+    fieldset > small,
+    td small,
+    td code
+  ) {
+  color: var(--muted);
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal, .chat-panel)
+  .icon-button:hover {
+  background: var(--raised);
+  color: var(--ink);
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal, .team-console)
+  :is(th, pre, fieldset, .pd-markdown-preview pre) {
+  background: #203128;
+  color: #bdcec1;
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"]
+  .workspace
+  :is(
+    .channel-models,
+    .channel-models > div,
+    .pd-tabs,
+    .pd-stat,
+    .pd-row,
+    .pd-brief,
+    .pd-material,
+    .pd-picker-row,
+    .pd-history-revision,
+    .pd-markdown-preview :is(th, td),
+    .pd-markdown-input
+  ) {
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"] :is(.workspace, .modal) .badge {
+  background: #304239;
+  color: #c3d0c8;
+  border-color: #475e4e;
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal)
+  .badge:is(.ready, .selected, .succeeded, .completed) {
+  background: #2e4528;
+  color: #c6e7a8;
+  border-color: #48663a;
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal)
+  .badge:is(
+    .pending_approval,
+    .submission_unknown,
+    .needs_attention,
+    .partial_success
+  ) {
+  background: #443822;
+  color: #f0ce88;
+  border-color: #695431;
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal)
+  .badge:is(.running, .transferring, .queued, .submitting) {
+  background: #263b4d;
+  color: #aecff0;
+  border-color: #3e5a70;
+}
+html[data-studio-theme="dark"]
+  :is(.workspace, .modal)
+  .badge:is(.failed, .transfer_failed, .rejected) {
+  background: #482e32;
+  color: #f0b7bb;
+  border-color: #6b4148;
+}
+html[data-studio-theme="dark"]
+  :is(
+    .modal,
+    .modal-actions,
+    .chat-panel,
+    .assistant-new-content,
+    .assistant-save,
+    .toast
+  ) {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"] .modal :is(h2, h3, label, b) {
+  color: var(--ink);
+}
+html[data-studio-theme="dark"]
+  :is(.modal, .workspace)
+  :is(.notice, .pd-conflict, .assistant-notice) {
+  background: #433823;
+  color: #efd092;
+  border-color: #6c5935;
+}
+html[data-studio-theme="dark"]
+  .chat-panel
+  :is(
+    .message.user,
+    .chat-input,
+    .assistant-file,
+    .chat-welcome button,
+    .agent-orb
+  ) {
+  background: var(--raised);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"]
+  .chat-panel
+  :is(
+    .chat-welcome h3,
+    .assistant-shot button,
+    .assistant-sources a,
+    .message a
+  ) {
+  color: #c5dfa7;
+}
+html[data-studio-theme="dark"]
+  .chat-panel
+  :is(
+    .chat-welcome,
+    .chat-welcome p,
+    .chat-input small,
+    .assistant-progress,
+    .assistant-file small,
+    .assistant-sources a small,
+    .message > span,
+    .assistant-panel .message > span small
+  ) {
+  color: var(--muted);
+}
+html[data-studio-theme="dark"]
+  .account-popover
+  :is(.account-menu-heading, .account-protocols),
+html[data-studio-theme="dark"]
+  .account-dialog
+  :is(header, .account-security-phone, .account-feedback-history article) {
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"]
+  .account-popover
+  > [role="menuitem"]:is(:hover, :focus-visible) {
+  background: var(--raised);
+  color: var(--ink);
+}
+html[data-studio-theme="dark"]
+  :is(.account-popover, .account-dialog)
+  :is(
+    small,
+    .account-value,
+    .account-counter,
+    .account-menu-heading small,
+    header p,
+    .account-avatar-edit p,
+    .account-security-phone p
+  ) {
+  color: var(--muted);
+}
+html[data-studio-theme="dark"]
+  .account-dialog
+  :is(.account-secondary, .account-upload-button, .sms-input button) {
+  background: var(--raised);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"] .account-dialog .account-error {
+  background: #482e32;
+  color: #f0b7bb;
+}
+html[data-studio-theme="dark"] .account-dialog .account-success {
+  background: #2e4528;
+  color: #c6e7a8;
+}
+html[data-studio-theme="dark"] .team-console {
+  background: var(--bg);
+  color: var(--ink);
+}
+html[data-studio-theme="dark"]
+  .team-console
+  :is(
+    header,
+    .team-cards article,
+    .wallet-cards article,
+    .table-scroll,
+    .reconcile-row
+  ) {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"]
+  .team-console
+  :is(.team-balance, .invite-result, th, .team-layout > aside > button.active) {
+  background: var(--raised);
+  color: #c5dfa7;
+}
+html[data-studio-theme="dark"]
+  .team-console
+  :is(
+    label,
+    .team-cards p,
+    .team-cards article > span,
+    small,
+    .empty-note,
+    .team-layout > aside > p,
+    .team-layout > aside > button
+  ) {
+  color: var(--muted);
+}
+html[data-studio-theme="dark"]
+  .team-console
+  :is(.team-layout > aside, .member-row, th, td) {
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"] :is(.ff-select-trigger, .ff-select-menu) {
+  --surface: #24352d;
+  --raised: #2c4135;
+  --ink: #e5eee8;
+  --line: #3d5045;
+  --muted: #a6b8ad;
+  color-scheme: dark;
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"] .ff-select-menu [role="option"].active {
+  background: var(--raised);
+}
+html[data-studio-theme="dark"] .ff-select-menu [role="option"].selected {
+  color: #c5f17b;
+}
+html[data-studio-theme="dark"]
+  .ff-select-menu
+  :is(.ff-select-search, .ff-select-done) {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"] .ff-select-search input {
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+}
+html[data-studio-theme="dark"]
+  .workspace
+  :is(
+    .concept-score,
+    .price-config-link,
+    .pd-material-edit summary,
+    .pd-upload-queue summary
+  ) {
+  color: #b8cf9e;
+}
+html[data-studio-theme="dark"] .team-console .official-pricing-panel {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-studio-theme="dark"] .team-console .official-pricing-panel a {
+  color: #b8cf9e;
+}
