@@ -5,6 +5,7 @@ export class HttpError extends Error {
     public code = "INVALID_REQUEST",
   ) {
     super(message);
+    this.name = "HttpError";
   }
 }
 export function assert(

@@ -1,3 +1,6 @@
+import { analyzeVideo } from "./video-analysis";
+import { importVideoFile } from "./video-import";
+import { emitEvent } from "../lib/events";
 import "dotenv/config";
 import { Queue, Worker } from "bullmq";
 import { randomUUID } from "node:crypto";
@@ -74,6 +77,26 @@ async function execute(id: string, phase: string) {
       await db.job.update({ where: { id }, data: { status: "cancelled" } });
       return;
     }
+    if (job.conversationId)
+      await emitEvent(job.conversationId, "attachment", {
+        jobId: id,
+        fileId: (job.input as any).fileId,
+        status: "processing",
+        text:
+          phase === "analyze"
+            ? "正在分析视频"
+            : phase === "import"
+              ? "正在导入视频"
+              : "正在读取附件",
+      });
+    if (phase === "import") {
+      await importVideoFile(id);
+      return;
+    }
+    if (phase === "analyze") {
+      await analyzeVideo(id);
+      return;
+    }
     if (phase === "parse") {
       await parseFile((job.input as any).fileId);
       await db.job.update({
@@ -83,7 +106,8 @@ async function execute(id: string, phase: string) {
       return;
     }
     if (phase === "overview") {
-      const result = await buildOverview(job);
+      assert(job.productId, 422, "总览必须关联产品");
+      const result = await buildOverview({ ...job, productId: job.productId });
       await db.job.update({
         where: { id },
         data: { status: "succeeded", phase: "done", result: json(result) },
@@ -251,7 +275,7 @@ async function execute(id: string, phase: string) {
                   : "png";
         const metadata = await probeMedia(buffer, mime);
         const file = await persistBuffer(
-          job.productId,
+          job.productId!,
           `${job.kind}-${id}-${index + 1}.${ext}`,
           mime,
           buffer,
@@ -317,6 +341,13 @@ async function execute(id: string, phase: string) {
       where: { id, leaseOwner: owner },
       data: { leaseOwner: null, leaseUntil: null },
     });
+    if (job.conversationId && latest)
+      await emitEvent(job.conversationId, "attachment", {
+        jobId: id,
+        fileId: (job.input as any).fileId ?? (latest.result as any)?.fileId,
+        status: latest.status,
+        error: latest.error,
+      });
     await refreshBatch(job.batchId);
   }
 }
@@ -361,6 +392,39 @@ async function dispatch() {
         error: "提交进程中断，需确认供应商是否已接单；系统没有重新提交。",
       },
     });
+    await db.fileAnalysis.updateMany({
+      where: {
+        status: "submitting",
+        updatedAt: { lt: new Date(Date.now() - 240000) },
+        jobId: {
+          in: (
+            await db.job.findMany({
+              where: { kind: "video_analysis", status: "submission_unknown" },
+              select: { id: true },
+            })
+          ).map((j) => j.id),
+        },
+      },
+      data: {
+        status: "submission_unknown",
+        error: "分析提交进程中断，未自动重发。",
+      },
+    });
+    const uncertainAnalyses = await db.fileAnalysis.findMany({
+      where: { status: "submission_unknown" },
+      select: { fileId: true },
+    });
+    if (uncertainAnalyses.length)
+      await db.fileObject.updateMany({
+        where: {
+          id: { in: uncertainAnalyses.map((a) => a.fileId) },
+          parseStatus: { in: ["pending", "processing"] },
+        },
+        data: {
+          parseStatus: "failed",
+          parseError: "分析提交结果待确认，未自动重发。",
+        },
+      });
     // Recover lost Redis messages using durable job state; provider submission is never replayed after it starts.
     const stale = await db.job.findMany({
       where: {

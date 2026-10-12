@@ -123,7 +123,7 @@ export function materialCategory(mime = "") {
     ? "product-image"
     : mime.startsWith("video/")
       ? "product-video"
-      : /text\/|pdf|wordprocessingml/.test(mime)
+      : /text\/|pdf|wordprocessingml|spreadsheetml|presentationml/.test(mime)
         ? "document"
         : "other";
 }

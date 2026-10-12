@@ -1,0 +1,15 @@
+ALTER TABLE "Channel" ADD COLUMN "options" JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE "Job" ALTER COLUMN "productId" DROP NOT NULL;
+ALTER TABLE "Job" ADD COLUMN "conversationId" TEXT;
+ALTER TABLE "FileObject" ALTER COLUMN "productId" DROP NOT NULL;
+ALTER TABLE "FileObject" ADD COLUMN "conversationId" TEXT, ADD COLUMN "sourceFileId" TEXT;
+ALTER TABLE "FileObject" ADD CONSTRAINT "FileObject_scope" CHECK (("productId" IS NOT NULL)::int + ("conversationId" IS NOT NULL)::int = 1);
+ALTER TABLE "Message" ADD COLUMN "attachmentIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[], ADD COLUMN "runId" TEXT, ADD COLUMN "status" TEXT NOT NULL DEFAULT 'completed';
+ALTER TABLE "AgentRun" ADD COLUMN "attempt" INTEGER NOT NULL DEFAULT 0, ADD COLUMN "attachmentIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[], ADD COLUMN "inputJobIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[], ADD COLUMN "searchCount" INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE "AgentEvent" ("seq" BIGSERIAL PRIMARY KEY, "conversationId" TEXT NOT NULL, "runId" TEXT, "eventKey" TEXT NOT NULL UNIQUE, "type" TEXT NOT NULL, "data" JSONB NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX "AgentEvent_conversationId_seq_idx" ON "AgentEvent"("conversationId", "seq");
+CREATE TABLE "FileAnalysis" ("id" TEXT PRIMARY KEY, "fileId" TEXT NOT NULL, "fingerprint" TEXT NOT NULL UNIQUE, "jobId" TEXT NOT NULL UNIQUE, "model" TEXT NOT NULL, "prompt" TEXT NOT NULL, "promptVersion" TEXT NOT NULL DEFAULT 'video-v1', "status" TEXT NOT NULL DEFAULT 'queued', "result" JSONB, "rawResponse" JSONB, "usage" JSONB, "error" TEXT, "providerFileId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL);
+CREATE INDEX "FileAnalysis_fileId_createdAt_idx" ON "FileAnalysis"("fileId", "createdAt");
+CREATE TABLE "SearchRecord" ("id" TEXT PRIMARY KEY, "actorId" TEXT NOT NULL, "runId" TEXT, "conversationId" TEXT, "requestKey" TEXT NOT NULL UNIQUE, "query" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'running', "result" JSONB, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX "FileObject_conversationId_idx" ON "FileObject"("conversationId");
+CREATE INDEX "Job_conversationId_idx" ON "Job"("conversationId");

@@ -6,13 +6,19 @@ import { encrypt } from "./security";
 import { audit, json, Tx } from "./services";
 const schema = z.object({
   name: z.string().min(1).max(100),
-  provider: z.enum(["aicentre", "deepseek"]),
+  provider: z.enum(["aicentre", "deepseek", "volcengine", "bocha"]),
   baseUrl: z
     .url()
     .refine((v) => new URL(v).protocol === "https:", "渠道须为 HTTPS"),
   apiKey: z.string().optional(),
   enabled: z.boolean().default(true),
   concurrency: z.number().int().min(1).max(20).default(3),
+  options: z
+    .object({
+      timeoutMs: z.number().int().min(1000).max(600000).default(180000),
+      searchLimit: z.number().int().min(1).max(20).default(5),
+    })
+    .default({ timeoutMs: 180000, searchLimit: 5 }),
   models: z.record(z.string(), z.array(z.string())).default({}),
 });
 export async function listChannels(actor: Actor) {

@@ -1398,9 +1398,7 @@ fieldset label {
   display: flex;
   flex-direction: column;
 }
-.with-chat .main {
-  margin-right: 365px;
-}
+
 .chat-panel > header {
   height: 70px;
   display: flex;
@@ -1634,40 +1632,12 @@ fieldset label {
 .login-form .button {
   margin-top: 5px;
 }
-.with-chat .resource-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.with-chat .pipeline-art {
-  width: 180px;
-  transform: scale(0.75);
-  transform-origin: right center;
-  margin-right: -20px;
-}
-.with-chat .intro-banner h2 {
-  font-size: 22px;
-}
-.with-chat .skill-banner {
-  flex-wrap: wrap;
-}
-.with-chat .page-body {
-  padding: 28px 24px;
-}
-.with-chat .stats {
-  gap: 10px;
-}
-.with-chat .stats > div {
-  padding: 14px;
-}
-.with-chat .stats svg {
-  display: none;
-}
+
 @media (min-width: 1650px) {
   .resource-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  .with-chat .resource-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+
   .card-media {
     height: 200px;
   }
@@ -1695,15 +1665,11 @@ fieldset label {
   .resource-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .with-chat .main {
-    margin-right: 0;
-  }
+
   .chat-panel {
     box-shadow: -15px 0 50px #18292215;
   }
-  .with-chat .resource-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+
   .skill-banner {
     gap: 15px;
     padding: 22px;
@@ -1887,9 +1853,6 @@ fieldset label {
     display: none;
   }
   .resource-grid,
-  .with-chat .resource-grid {
-    grid-template-columns: 1fr;
-  }
   .stats {
     gap: 8px;
   }
@@ -1984,4 +1947,264 @@ fieldset label {
   padding: 0;
   margin: 0;
   min-width: 0;
+}
+
+/* The assistant overlays the workspace; it never participates in its layout. */
+.assistant-panel {
+  min-width: 0;
+  max-width: 100vw;
+  border-left: 1px solid var(--line);
+  box-shadow: -18px 0 64px #14292420;
+  z-index: 60;
+  transform: translateX(104%);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease,
+    visibility 180ms;
+}
+.assistant-panel.is-open {
+  transform: translateX(0);
+  opacity: 1;
+  visibility: visible;
+}
+.assistant-panel.is-resizing {
+  transition: none;
+  user-select: none;
+}
+.assistant-resizer {
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 2;
+}
+.assistant-resizer:hover,
+.assistant-resizer:focus-visible {
+  background: #8db35255;
+  outline: none;
+}
+.assistant-panel header small {
+  font-size: 10px;
+}
+.assistant-panel button {
+  cursor: pointer;
+}
+.assistant-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.assistant-panel .message {
+  overflow-wrap: anywhere;
+}
+.assistant-panel .message p {
+  white-space: pre-wrap;
+}
+.assistant-panel .message table {
+  display: block;
+  overflow-x: auto;
+}
+.assistant-panel .message pre {
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+.assistant-panel .message > span small {
+  font-size: 10px;
+  color: #748069;
+}
+.assistant-file {
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: #f8faf6;
+  border-radius: 10px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.assistant-file-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.assistant-file-title b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.assistant-file button,
+.assistant-file-actions a,
+.assistant-notice button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 3px;
+}
+.assistant-file small {
+  color: #748069;
+  display: block;
+  margin: 4px 0;
+}
+.assistant-file video,
+.assistant-file audio {
+  width: 100%;
+  max-height: 260px;
+  margin-top: 8px;
+  border-radius: 7px;
+}
+.assistant-file .assistant-image {
+  display: block;
+  width: 100%;
+}
+.assistant-file img {
+  max-width: 100%;
+  object-fit: contain;
+  transition: max-height 180ms;
+}
+.assistant-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 7px;
+}
+.assistant-file-actions a {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.assistant-shot {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.assistant-shot button {
+  color: #597c2e;
+  font-weight: 600;
+}
+.assistant-shot p {
+  margin: 4px 0;
+}
+.assistant-panel .chat-input {
+  margin: 0;
+  border-radius: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 12px 16px 16px;
+  flex-shrink: 0;
+  max-height: 55%;
+  overflow-y: auto;
+}
+.assistant-panel .chat-input textarea {
+  min-height: 80px;
+  max-height: 180px;
+  resize: vertical;
+}
+.assistant-panel .chat-input .assistant-drafts {
+  display: block;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.assistant-panel .assistant-composer-actions,
+.assistant-composer-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.assistant-panel .assistant-composer-actions {
+  justify-content: space-between;
+}
+.assistant-composer-actions small {
+  font-size: 10px;
+}
+.assistant-link {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.assistant-link input {
+  flex: 1;
+  min-width: 0;
+}
+.assistant-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #61734f;
+  font-size: 12px;
+  padding: 8px 0;
+}
+.assistant-notice {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 12px 8px;
+  padding: 10px;
+  background: #fff5df;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.assistant-new-content {
+  position: absolute;
+  right: 22px;
+  bottom: 180px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: white;
+  padding: 7px 12px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  box-shadow: 0 3px 12px #0001;
+}
+.assistant-sources {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 12px;
+}
+.assistant-sources a {
+  display: block;
+  padding: 7px 0;
+  color: #47632b;
+}
+.assistant-sources a small {
+  display: block;
+  color: #89937f;
+}
+.assistant-save {
+  position: absolute;
+  inset: 20% 20px auto;
+  background: white;
+  border: 1px solid var(--line);
+  box-shadow: 0 0 0 100vmax #0003;
+  padding: 20px;
+  border-radius: 12px;
+  z-index: 4;
+}
+.assistant-save > div {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 15px;
+}
+.assistant-save select {
+  width: 100%;
+}
+@media (max-width: 640px) {
+  .assistant-panel {
+    top: 0;
+    bottom: 0;
+    width: 100vw !important;
+  }
+  .assistant-resizer {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-panel,
+  .assistant-file img {
+    transition: none;
+  }
 }

@@ -198,8 +198,79 @@ export function openapi() {
       "Start an agent run",
       {
         type: "object",
-        required: ["text"],
-        properties: { text: { type: "string" } },
+        properties: {
+          text: { type: "string", maxLength: 30000 },
+          attachmentIds: {
+            type: "array",
+            items: { type: "string" },
+            maxItems: 10,
+          },
+        },
+      },
+    ],
+    [
+      "/conversations/{id}/events",
+      "get",
+      "SSE events. Resume with Last-Event-ID or after cursor; snapshot includes a consistent cursor.",
+    ],
+    [
+      "/conversations/{id}/imports",
+      "post",
+      "Import a public HTTPS video file into the conversation (not a sharing page)",
+      {
+        type: "object",
+        required: ["url"],
+        properties: { url: { type: "string", format: "uri" } },
+      },
+    ],
+    [
+      "/files/{id}/content",
+      "get",
+      "Read attachment text in pages; cursor defaults 0, limit defaults 8000 (max 16000). Includes source sections.",
+    ],
+    [
+      "/files/{id}/analyses",
+      "get",
+      "List authorized video analysis results and attempt states",
+    ],
+    [
+      "/files/{id}/analyses",
+      "post",
+      "Analyze video using Doubao; identical file/model/prompt requests reuse the existing task",
+      {
+        type: "object",
+        properties: { prompt: { type: "string", maxLength: 30000 } },
+      },
+    ],
+    [
+      "/files/{id}/save-to-product",
+      "post",
+      "Copy an attachment into product materials with an immutable revision",
+      {
+        type: "object",
+        required: ["productId", "baseVersion"],
+        properties: {
+          productId: { type: "string" },
+          baseVersion: { type: "integer", minimum: 1 },
+        },
+      },
+    ],
+    [
+      "/tools/web-search",
+      "post",
+      "Bocha search; write scope and idempotency key required. Cite returned URLs.",
+      {
+        type: "object",
+        required: ["query"],
+        properties: {
+          query: { type: "string", maxLength: 1500 },
+          freshness: {
+            type: "string",
+            enum: ["noLimit", "oneDay", "oneWeek", "oneMonth", "oneYear"],
+            default: "noLimit",
+          },
+          count: { type: "integer", minimum: 1, maximum: 10, default: 10 },
+        },
       },
     ],
     ["/agent-runs/{id}/stop", "post", "Stop a run", {}],
@@ -222,20 +293,35 @@ export function openapi() {
     };
   }
   const fileList = paths["/api/v1/files"] as any;
-  fileList.get.parameters = ["productId", "page", "limit"].map((p) =>
-    param(p, "query"),
-  );
+  fileList.get.parameters = [
+    "productId",
+    "conversationId",
+    "page",
+    "limit",
+  ].map((p) => param(p, "query"));
   fileList.get.description =
     "Returns items,total,page,limit,hasMore. Defaults to 100 items, maximum 100 per page.";
   (paths["/api/v1/products/{id}"] as any).patch.description =
     "Product content is a field patch: omitted fields are preserved; supplied arrays replace that array. Structured lists have stable IDs. Editing legacy sellingPoints/audience/fileIds without corresponding structured lists can return PRODUCT_STRUCTURE_CONFLICT. Re-read and update structured fields instead.";
+  (paths["/api/v1/conversations/{id}/events"] as any).get.responses["200"] = {
+    description: "Authenticated resumable SSE",
+    content: { "text/event-stream": { schema: { type: "string" } } },
+  };
+  for (const [path, params] of [
+    ["/api/v1/conversations/{id}/events", [param("after", "query")]],
+    [
+      "/api/v1/files/{id}/content",
+      [param("cursor", "query"), param("limit", "query")],
+    ],
+  ] as const)
+    (paths[path] as any).get.parameters.push(...params);
   return {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.1.0",
+      version: "1.2.0",
       description:
-        "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. Objects and files are product-scoped. Industrial storyboards belong to plans.",
+        "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. Business objects are product-scoped; private attachments may instead be conversation-scoped. Industrial storyboards belong to plans.",
     },
     servers: [{ url: process.env.APP_URL ?? "http://localhost:3000" }],
     paths,

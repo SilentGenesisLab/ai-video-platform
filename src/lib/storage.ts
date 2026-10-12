@@ -1,3 +1,9 @@
+import { createHash } from "node:crypto";
+import { createWriteStream, createReadStream } from "node:fs";
+import { mkdtemp, open, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
 import OSS from "ali-oss";
 import { randomUUID } from "node:crypto";
 import { assert } from "./errors";
@@ -6,6 +12,7 @@ import { db } from "./db";
 import { Actor, productAccess, requireScope } from "./auth";
 import { audit, getResource, json, Tx } from "./services";
 import { z } from "zod";
+import { conversationAccess, fileAccess } from "./access";
 export function oss() {
   assert(
     process.env.OSS_ACCESS_KEY_ID && process.env.OSS_ACCESS_KEY_SECRET,
@@ -55,12 +62,16 @@ export const allowedMime = [
   "audio/ogg",
   "text/plain",
   "text/markdown",
+  "text/csv",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 export const uploadSchema = z.object({
   parsePolicy: z.enum(["auto", "skip"]).default("auto"),
-  productId: z.string(),
+  productId: z.string().optional(),
+  conversationId: z.string().optional(),
   name: z.string().min(1).max(200),
   mime: z.enum(allowedMime as [string, ...string[]]),
   bytes: z
@@ -72,13 +83,27 @@ export const uploadSchema = z.object({
 export async function initiateUpload(actor: Actor, input: unknown, tx: Tx) {
   requireScope(actor, "write");
   const { parsePolicy, ...data } = uploadSchema.parse(input);
-  const product = await getResource(actor, data.productId, tx);
-  assert(product.kind === "product", 422, "需要产品");
+  assert(
+    Boolean(data.productId) !== Boolean(data.conversationId),
+    422,
+    "请选择产品或会话归属",
+  );
+  if (data.conversationId)
+    assert(
+      process.env.ASSISTANT_ATTACHMENTS_ENABLED !== "false",
+      503,
+      "聊天附件暂未启用",
+    );
+  if (data.productId) {
+    const product = await getResource(actor, data.productId, tx);
+    assert(product.kind === "product", 422, "需要产品");
+  } else await conversationAccess(actor, data.conversationId!, tx);
   const file = await tx.fileObject.create({
     data: {
       ...data,
       key: objectKey(data.name),
       createdBy: actor.id,
+      parseStatus: data.conversationId ? "deferred" : "pending",
       metadata: json({ parsePolicy }),
     },
   });
@@ -95,34 +120,61 @@ export async function initiateUpload(actor: Actor, input: unknown, tx: Tx) {
 }
 export async function completeUpload(actor: Actor, id: string) {
   requireScope(actor, "write");
-  const file = await db.fileObject.findUnique({ where: { id } });
-  assert(file, 404, "文件不存在");
-  productAccess(actor, file.productId);
+  const file = await fileAccess(actor, id);
   if (file.status === "ready") return file;
   const head = await oss().head(file.key);
   const bytes = Number(
     (head.res.headers as Record<string, string>)["content-length"],
   );
   assert(bytes === file.bytes, 422, "上传文件大小不匹配");
-  const result = await oss().get(file.key);
-  const buffer = result.content as Buffer;
-  validateMagic(buffer, file.mime);
-  // Promote to a new immutable object key. An unexpired staging PUT cannot overwrite an approved asset.
+  const dir = await mkdtemp(join(tmpdir(), "aivideo-confirm-"));
   const finalKey = objectKey(file.name);
-  await oss().put(finalKey, buffer, { mime: file.mime });
+  let sha256: string;
+  try {
+    const path = join(dir, "upload");
+    await pipeline(
+      (await oss().getStream(file.key)).stream,
+      createWriteStream(path),
+    );
+    const handle = await open(path, "r");
+    try {
+      const head = Buffer.alloc(32);
+      await handle.read(head, 0, 32, 0);
+      validateMagic(head, file.mime);
+    } finally {
+      await handle.close();
+    }
+    const hash = createHash("sha256");
+    let actualBytes = 0;
+    for await (const chunk of createReadStream(path)) {
+      actualBytes += chunk.length;
+      hash.update(chunk);
+    }
+    assert(actualBytes === file.bytes, 422, "上传内容大小变化，请重新上传");
+    sha256 = hash.digest("hex");
+    // Promote exactly the bytes that were validated, even if the staging PUT is overwritten concurrently.
+    await oss().put(finalKey, path, { mime: file.mime });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
   return db.$transaction(async (tx) => {
     const changed = await tx.fileObject.updateMany({
       where: { id, status: "pending" },
       data: {
         status: "ready",
-        sha256: digest(buffer),
+        sha256,
         key: finalKey,
-        ...((file.metadata as any)?.parsePolicy === "skip"
+        ...(!file.conversationId &&
+        (file.metadata as any)?.parsePolicy === "skip"
           ? { parseStatus: "skipped" }
           : {}),
       },
     });
-    if (changed.count && (file.metadata as any)?.parsePolicy !== "skip") {
+    if (
+      changed.count &&
+      !file.conversationId &&
+      (file.metadata as any)?.parsePolicy !== "skip"
+    ) {
       const job = await tx.job.create({
         data: {
           kind: "parse",
@@ -148,9 +200,11 @@ export function validateMagic(buf: Buffer, mime: string) {
     assert(head.toString().startsWith("%PDF-"), 422, "文件内容不是 PDF");
   if (
     mime ===
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mime.includes("openxmlformats-officedocument.spreadsheetml") ||
+    mime.includes("openxmlformats-officedocument.presentationml")
   )
-    assert(hex.startsWith("504b0304"), 422, "文件内容不是 DOCX");
+    assert(hex.startsWith("504b0304"), 422, "文件内容不是 Office 文档");
   if (mime === "image/webp")
     assert(head.toString("ascii", 8, 12) === "WEBP", 422, "文件内容不是 WebP");
   if (mime === "image/gif")

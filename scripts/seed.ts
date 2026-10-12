@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import "dotenv/config";
 import { db } from "../src/lib/db";
 import { encrypt } from "../src/lib/security";
 import bcrypt from "bcryptjs";
@@ -44,6 +44,20 @@ async function main() {
         video: ["seedance-2.5", "seedance-2.0"],
         audio: ["suno-v6", "suno-sound"],
       },
+    },
+    {
+      name: "豆包 · 视频理解",
+      provider: "volcengine",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      key: process.env.ARK_API_KEY,
+      models: { video_understanding: ["doubao-seed-2-1-pro-260628"] },
+    },
+    {
+      name: "博查 · 联网搜索",
+      provider: "bocha",
+      baseUrl: "https://api.bocha.cn",
+      key: process.env.BOCHA_API_KEY,
+      models: { search: ["web-search"] },
     },
   ];
   for (const p of presets) {
