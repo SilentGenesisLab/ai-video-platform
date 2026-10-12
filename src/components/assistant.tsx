@@ -404,6 +404,11 @@ function AssistantPanel({
       const c = await api("/conversations/" + id);
       if (!mounted) return;
       setConversation(c);
+      setConversations((old) =>
+        old.map((item) =>
+          item.id === c.id ? { ...item, title: c.title } : item,
+        ),
+      );
       cursor.current = c.cursor ?? "0";
       if (c.searches)
         setSources(c.searches.flatMap((s: any) => s.result?.sources ?? []));
@@ -425,6 +430,12 @@ function AssistantPanel({
           if (BigInt(e.seq) <= BigInt(cursor.current)) return;
           cursor.current = e.seq;
           const d = e.data;
+          if (e.type === "title") {
+            setConversations((old) =>
+              old.map((c) => (c.id === id ? { ...c, title: d.title } : c)),
+            );
+            setConversation((c: any) => (c ? { ...c, title: d.title } : c));
+          }
           if (e.type === "message")
             setConversation((c: any) =>
               c

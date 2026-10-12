@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { evaluationSchema } from "./concept-scoring";
 import { productContentSchema } from "./product-content";
 export const kinds = [
   "product",
@@ -55,6 +56,7 @@ export const contentSchemas: Record<Kind, z.ZodType> = {
     structure: text.default(""),
     emotion: text.default(""),
     selfReview: text.default(""),
+    evaluation: evaluationSchema.optional(),
     score: z.number().min(0).max(10).optional(),
     comments: text.default(""),
   }),

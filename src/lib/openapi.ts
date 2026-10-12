@@ -9,7 +9,31 @@ import {
   routes,
 } from "./contracts";
 export function openapi() {
-  const paths: Record<string, unknown> = {};
+  const paths: Record<string, unknown> = {
+    "/api/v1/concepts/score-unscored": {
+      post: {
+        summary:
+          "Score all unscored concepts asynchronously (human write + generate). Existing scores including zero are preserved. Optional productId limits the scope; no pagination limit.",
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { productId: { type: "string", format: "uuid" } },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description:
+              "Durable scoring job; GET /jobs/{id} returns progress, skipped and failed results",
+          },
+          "409": { description: "Another scoring job is active" },
+        },
+      },
+    },
+  };
   const response = {
     description: "Success",
     content: { "application/json": { schema: { type: "object" } } },

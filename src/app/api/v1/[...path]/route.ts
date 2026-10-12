@@ -11,6 +11,7 @@ import {
   allowedResourceKinds,
 } from "@/lib/permissions";
 import { roles } from "@/lib/auth";
+import { isUnscored } from "@/lib/concept-scoring";
 import { adminRoute } from "@/lib/platform-admin";
 import { meteredStream } from "@/lib/metered-stream";
 import { meteredCall } from "@/lib/metering";
@@ -163,6 +164,9 @@ async function handle(
               messages: z.array(z.any()).max(500),
               tools: z.array(z.any()).optional(),
               max_tokens: z.number().int().positive().max(8192),
+              thinking: z
+                .object({ type: z.enum(["enabled", "disabled"]) })
+                .optional(),
             }),
           })
           .parse(body);
@@ -284,6 +288,79 @@ async function handle(
         return result;
       };
       if (group === "auth" && id === "me" && method === "GET") return ok(actor);
+      if (
+        group === "concepts" &&
+        id === "score-unscored" &&
+        method === "POST"
+      ) {
+        requireHuman(actor);
+        requireScope(actor, "generate");
+        requireScope(actor, "write");
+        const filter = z
+          .object({ productId: z.string().uuid().optional() })
+          .parse(body);
+        return ok(
+          await create(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM "Team" WHERE id = ${actor.teamId} FOR UPDATE`;
+            const active = await tx.job.findFirst({
+              where: {
+                kind: "concept_scoring",
+                status: { in: ["queued", "running"] },
+              },
+            });
+            assert(
+              !active,
+              409,
+              "已有创意评分任务正在执行，请在日志状态查看进度",
+            );
+            const candidates = await tx.resource.findMany({
+              where: {
+                ...resourceFilter(actor),
+                kind: "concept",
+                status: { not: "archived" },
+                ...(filter.productId ? { productId: filter.productId } : {}),
+              },
+              orderBy: { createdAt: "asc" },
+            });
+            const concepts = candidates
+              .filter((c) => isUnscored(c.content))
+              .map((c) => ({ id: c.id, version: c.version }));
+            assert(concepts.length, 422, "没有未评分创意");
+            const channel = await tx.channel.findFirst({
+              where: { enabled: true, provider: "deepseek" },
+            });
+            const model = (channel?.models as any)?.text?.[0];
+            assert(channel && model, 503, "DeepSeek 渠道未配置");
+            const job = await tx.job.create({
+              data: {
+                teamId: actor.teamId,
+                productId:
+                  filter.productId ??
+                  candidates.find((c) => c.id === concepts[0].id)?.productId,
+                kind: "concept_scoring",
+                phase: "score",
+                input: json({
+                  createdBy: actor.userId,
+                  concepts,
+                  channelId: channel.id,
+                  model,
+                }),
+                result: json({ items: [], total: concepts.length }),
+              },
+            });
+            await tx.outbox.create({ data: { jobId: job.id, phase: "score" } });
+            await audit(
+              tx,
+              actor,
+              "concepts.score_unscored",
+              job.id,
+              filter.productId,
+              { count: concepts.length },
+            );
+            return job;
+          }),
+        );
+      }
       if (group === "resources" && id && method === "GET")
         return ok(await resourceDetail(actor, id));
       if (group === "auth" && id === "logout" && method === "POST") {
@@ -639,6 +716,7 @@ async function handle(
             "无权查看此模块的任务",
             "KEY_PERMISSION",
           );
+          if (job.kind === "concept_scoring") requireHuman(actor);
           await scopedAccess(actor, job);
           if (method === "GET")
             return ok({

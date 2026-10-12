@@ -443,6 +443,12 @@ export async function claimRun() {
     return {
       id: run.id,
       prompt: run.prompt,
+      needsTitle:
+        run.conversation.messages.filter((m) => m.role === "user")[0]?.runId ===
+          run.id &&
+        !(await tx.agentEvent.findFirst({
+          where: { conversationId: run.conversationId, type: "title" },
+        })),
       conversationId: run.conversationId,
       productId: run.conversation.productId,
       planId: run.conversation.planId,

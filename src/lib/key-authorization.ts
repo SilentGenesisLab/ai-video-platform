@@ -57,6 +57,7 @@ export async function canReadBatch(a: Actor, batch: any) {
 export async function canReadJob(a: Actor, job: any) {
   if (a.type === "human") return true;
   const kind = job.kind;
+  if (kind === "concept_scoring") return false;
   if (["image", "audio", "video"].includes(kind))
     return (await batchPermissionIds(kind, [job.input], "read")).every((id) =>
       hasPermission(a, id),

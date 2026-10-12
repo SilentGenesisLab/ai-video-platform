@@ -121,6 +121,7 @@ test("ASSISTANT-03 live SSE yields multiple visible deltas before completion", a
           const event = JSON.parse(e.data);
           (window as any).__assistantEvents.push({
             type: event.type,
+            data: event.data,
             time: Date.now(),
           });
         });
@@ -164,6 +165,9 @@ test("ASSISTANT-03 live SSE yields multiple visible deltas before completion", a
     )
     .toBe(true);
   const events = await page.evaluate(() => (window as any).__assistantEvents);
+  const titleEvent = events.find((e: any) => e.type === "title");
+  expect(titleEvent?.data.title.length).toBeGreaterThan(0);
+  expect(titleEvent?.data.title).not.toContain("这是流式输出验收");
   expect(events.filter((e: any) => e.type === "delta").length).toBeGreaterThan(
     1,
   );
@@ -513,4 +517,59 @@ test("ASSISTANT-09 plan storyboard asset and script editors share reference coll
     await expect(dialog).toHaveCount(0);
     await expect(page.getByLabel("编辑上下文")).toContainText(item.title);
   }
+});
+
+test("ASSISTANT-10 bulk scores unscored concepts and preserves manual zero", async ({
+  page,
+}) => {
+  test.skip(
+    process.env.E2E_LIVE_AGENT !== "1" ||
+      !process.env.APP_URL?.includes("127.0.0.1"),
+    "Local live text grading only",
+  );
+  await login(page);
+  const product = await api(page, "/products", {
+    title: "评分验收" + randomUUID().slice(0, 8),
+    content: { description: "蓝色折叠伞，面向通勤者，轻便易收纳。" },
+  });
+  const concept = await api(page, "/concepts", {
+    productId: product.id,
+    title: "地铁口的一分钟",
+    content: {
+      hook: "大雨突然来临",
+      idea: "通勤者从包里取出折叠伞",
+      structure: "突降大雨—取伞—收纳",
+      emotion: "紧张到安心",
+    },
+  });
+  const manual = await api(page, "/concepts", {
+    productId: product.id,
+    title: "保留人工评分",
+    content: { score: 0 },
+  });
+  const wallet = await api(page, "/billing/wallet");
+  await page.goto("/studio/creative");
+  await page
+    .locator('select[aria-label="按产品筛选"]')
+    .selectOption(product.id, { force: true });
+  await page.getByRole("button", { name: "一键评分未评分创意" }).click();
+  await expect
+    .poll(
+      async () => (await api(page, "/resources/" + concept.id)).content.score,
+      { timeout: 90000 },
+    )
+    .not.toBeUndefined();
+  const scored = await api(page, "/resources/" + concept.id);
+  expect(scored.content.evaluation.dimensions).toHaveLength(5);
+  expect(scored.content.evaluation.sourceVersion).toBe(1);
+  const preserved = await api(page, "/resources/" + manual.id);
+  expect(preserved.version).toBe(1);
+  expect(preserved.content.score).toBe(0);
+  expect(Number((await api(page, "/billing/wallet")).balance)).toBe(
+    Number(wallet.balance),
+  );
+  await page.reload();
+  await expect(
+    page.getByText("评分依据", { exact: true }).first(),
+  ).toBeVisible();
 });
