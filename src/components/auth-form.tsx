@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Brand, ProductScene } from "./landing";
+import { accountLinks } from "./account-links";
 export function PasswordInput(props: InputHTMLAttributes<HTMLInputElement>) {
   const [show, setShow] = useState(false);
   return (
@@ -334,6 +335,7 @@ export default function AuthForm({
             </>
           )}
         </div>
+        <div className="auth-protocols"><a href={accountLinks.agreement} target="_blank" rel="noopener noreferrer">产品用户协议</a><span>·</span><a href={accountLinks.privacy} target="_blank" rel="noopener noreferrer">隐私政策</a></div>
         <span className="auth-bottom">FRAMEFLOW · YOUR CREATIVE WORKSPACE</span>
       </section>
     </main>

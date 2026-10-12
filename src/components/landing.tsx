@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { accountLinks } from "./account-links";
 import {
   ArrowUpRight,
   ArrowDown,
@@ -437,6 +438,8 @@ export default function Landing() {
           <Link href="/skills/ai-video-platform/SKILL.md">Skill</Link>
           <Link href="/api/v1/openapi.json">接口文档</Link>
           <a href="#faq">常见问题</a>
+          <a href={accountLinks.agreement} target="_blank" rel="noopener noreferrer">产品用户协议</a>
+          <a href={accountLinks.privacy} target="_blank" rel="noopener noreferrer">隐私政策</a>
         </div>
         <small>© {new Date().getFullYear()} Frameflow</small>
       </footer>

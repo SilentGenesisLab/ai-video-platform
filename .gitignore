@@ -13,3 +13,4 @@ playwright-report/
 *.tsbuildinfo
 *.log
 backups/
+.npm-cache-account/

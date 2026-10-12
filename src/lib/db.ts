@@ -28,6 +28,7 @@ const scoped = new Set([
   "UsageRecord",
   "TeamInvitation",
   "TeamMember",
+  "Feedback",
 ]);
 // Trusted authentication/dispatch code uses systemDb. Authenticated business requests
 // and worker executions always enter withTeam before touching these delegates.
