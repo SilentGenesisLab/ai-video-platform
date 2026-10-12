@@ -1,7 +1,6 @@
 "use client";
-import { AllocationForm } from "./credit-allocation";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { api } from "./api";
 import { Brand } from "./landing";
 import {
@@ -9,10 +8,10 @@ import {
   BarChart3,
   Settings2,
   Users,
-  Wallet,
   RefreshCw,
   Plus,
   LayoutDashboard,
+  X,
 } from "lucide-react";
 const n = (v: any) =>
   Number(v ?? 0).toLocaleString("zh-CN", { maximumFractionDigits: 6 });
@@ -200,7 +199,6 @@ export default function AdminConsole() {
             ["analytics", "经营分析", BarChart3],
             ["channels", "AI 能力管理", Settings2],
             ["users", "用户管理", Users],
-            ["credits", "积分管理", Wallet],
           ].map(([id, label, Icon]: any) => (
             <button
               key={id}
@@ -218,30 +216,29 @@ export default function AdminConsole() {
           <a href="/team">团队与个人账号</a>
         </aside>
         <section className="team-content">
-          <div className="admin-top">
-            <span className="eyebrow">{actor?.name ?? "正在验证身份"}</span>
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() => void load()}
-            >
-              <RefreshCw size={15} />
-              刷新
-            </button>
-          </div>
-          {error && (
+          {error && !detail && (
             <p role="alert" className="error">
               {error}
             </p>
           )}
-          {notice && (
+          {notice && !detail && (
             <p role="status" className="notice">
               {notice}
             </p>
           )}
           {tab === "dashboard" && (
             <>
-              <h2>仪表盘</h2>
+              <div className="admin-top">
+                <h2>仪表盘</h2>
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={() => void load()}
+                >
+                  <RefreshCw size={15} />
+                  刷新
+                </button>
+              </div>
               <p className="muted">
                 北京时间 ·
                 活跃按当天模型调用的独立操作者统计，任务按模型调用次数统计。
@@ -313,7 +310,17 @@ export default function AdminConsole() {
           )}
           {tab === "analytics" && (
             <>
-              <h2>经营分析</h2>
+              <div className="admin-top">
+                <h2>经营分析</h2>
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={() => void load()}
+                >
+                  <RefreshCw size={15} />
+                  刷新
+                </button>
+              </div>
               <p className="muted">
                 实际费用、按采购价计算和临时估算分别列出。
               </p>
@@ -496,6 +503,46 @@ export default function AdminConsole() {
                 ))}
               </div>
               <p>渠道失败/未完成调用：{dashboard?.failures ?? 0}</p>
+              <h3>待对账调用</h3>
+              <p className="muted">
+                只有取得费用依据后才能人工结算，确认未收费可填0。
+              </p>
+              {pending.map((p) => (
+                <form
+                  className="inline-form"
+                  key={p.id}
+                  onSubmit={(e) => {
+                    const d = form(e);
+                    void act(() =>
+                      api("/platform/reconcile/" + p.id, "POST", {
+                        costCny: Number(d.costCny),
+                        reason: d.reason,
+                      }),
+                    );
+                  }}
+                >
+                  <span>
+                    {p.model} · 冻结 {n(p.reserved)} · {p.error}
+                  </span>
+                  <label>
+                    实际人民币费用
+                    <input
+                      type="number"
+                      name="costCny"
+                      min="0"
+                      step="0.000001"
+                      required
+                    />
+                  </label>
+                  <label>
+                    对账依据
+                    <input name="reason" minLength={3} required />
+                  </label>
+                  <button className="button" disabled={busy}>
+                    对账结算
+                  </button>
+                </form>
+              ))}
             </>
           )}
           {tab === "channels" && (
@@ -503,15 +550,37 @@ export default function AdminConsole() {
               <div className="admin-top">
                 <h2>AI 能力管理</h2>
                 <button
-                  className="button dark"
-                  onClick={() => {
-                    setEditing(null);
-                    setChannelForm(true);
-                  }}
+                  className="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(
+                      () => api("/platform/rates/confirm-current", "POST", {}),
+                      "当前采购价已核实",
+                    )
+                  }
                 >
-                  <Plus size={16} />
-                  新增渠道
+                  核实全部当前配置
                 </button>
+                <div className="admin-actions">
+                  <button
+                    className="button"
+                    disabled={busy}
+                    onClick={() => void load()}
+                  >
+                    <RefreshCw size={15} />
+                    刷新
+                  </button>
+                  <button
+                    className="button dark"
+                    onClick={() => {
+                      setEditing(null);
+                      setChannelForm(true);
+                    }}
+                  >
+                    <Plus size={16} />
+                    新增渠道
+                  </button>
+                </div>
               </div>
               <div className="team-cards">
                 {channels.map((c) => (
@@ -737,44 +806,55 @@ export default function AdminConsole() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rates.map((r) => (
-                      <tr key={r.id}>
-                        <td>
-                          {r.model}
-                          <small>
-                            {kinds[r.kind]} · {r.resolution || "通用规格"}
-                          </small>
-                        </td>
-                        <td>
-                          {r.unit === "token"
-                            ? `输入 ${n(r.inputRate)} / 缓存 ${n(r.cachedInputRate)} / 输出 ${n(r.rate)} 元/百万Token`
-                            : `${n(r.rate)} 元/${r.unit}`}
-                        </td>
-                        <td>
-                          {r.sourceType === "estimated"
-                            ? "临时估算"
-                            : "核实采购价"}
-                          <small>{r.basis}</small>
-                        </td>
-                        <td>
-                          {r.sourceUrl && (
-                            <a
-                              href={r.sourceUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              价格来源
-                            </a>
-                          )}
-                          <small>
-                            v{r.version} ·{" "}
-                            {r.checkedAt
-                              ? new Date(r.checkedAt).toLocaleDateString()
-                              : "未核实"}
-                          </small>
-                        </td>
-                      </tr>
-                    ))}
+                    {rates
+                      .filter(
+                        (r, i, all) =>
+                          all.findIndex(
+                            (v) =>
+                              v.channelId === r.channelId &&
+                              v.model === r.model &&
+                              v.resolution === r.resolution &&
+                              v.supplier === r.supplier,
+                          ) === i,
+                      )
+                      .map((r) => (
+                        <tr key={r.id}>
+                          <td>
+                            {r.model}
+                            <small>
+                              {kinds[r.kind]} · {r.resolution || "通用规格"}
+                            </small>
+                          </td>
+                          <td>
+                            {r.unit === "token"
+                              ? `输入 ${n(r.inputRate)} / 缓存 ${n(r.cachedInputRate)} / 输出 ${n(r.rate)} 元/百万Token`
+                              : `${n(r.rate)} 元/${r.unit}`}
+                          </td>
+                          <td>
+                            {r.sourceType === "estimated"
+                              ? "临时估算"
+                              : "已核实"}
+                            <small>{r.basis}</small>
+                          </td>
+                          <td>
+                            {r.sourceUrl && (
+                              <a
+                                href={r.sourceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                价格来源
+                              </a>
+                            )}
+                            <small>
+                              v{r.version} ·{" "}
+                              {r.checkedAt
+                                ? new Date(r.checkedAt).toLocaleDateString()
+                                : "未核实"}
+                            </small>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -784,12 +864,22 @@ export default function AdminConsole() {
             <>
               <div className="admin-top">
                 <h2>用户管理</h2>
-                <button
-                  className="button dark"
-                  onClick={() => setNewUser(!newUser)}
-                >
-                  创建用户
-                </button>
+                <div className="admin-actions">
+                  <button
+                    className="button"
+                    disabled={busy}
+                    onClick={() => void load()}
+                  >
+                    <RefreshCw size={15} />
+                    刷新
+                  </button>
+                  <button
+                    className="button dark"
+                    onClick={() => setNewUser(!newUser)}
+                  >
+                    创建用户
+                  </button>
+                </div>
               </div>
               <form
                 className="inline-form"
@@ -929,8 +1019,29 @@ export default function AdminConsole() {
                 </div>
               </div>
               {detail && (
-                <section className="admin-detail">
-                  <h3>{detail.name}的账号</h3>
+                <UserDialog onClose={() => setDetail(null)}>
+                  <h2>{detail.name}的用户详情</h2>
+                  <p className="muted">
+                    {detail.email ?? detail.phone} ·{" "}
+                    {detail.platformAdmin ? "管理员" : "普通用户"} ·{" "}
+                    {detail.active ? "启用" : "停用"}
+                  </p>
+                  <p>
+                    注册时间：
+                    {new Date(detail.createdAt).toLocaleString("zh-CN", {
+                      timeZone: "Asia/Shanghai",
+                    })}
+                  </p>
+                  {error && (
+                    <p role="alert" className="error">
+                      {error}
+                    </p>
+                  )}
+                  {notice && (
+                    <p role="status" className="notice">
+                      {notice}
+                    </p>
+                  )}
                   <form
                     className="admin-form"
                     key={detail.id + detail.name}
@@ -995,6 +1106,127 @@ export default function AdminConsole() {
                       重置密码
                     </button>
                   </form>
+                  <div className="admin-stats">
+                    <article>
+                      <small>个人余额</small>
+                      <strong>{n(detail.wallet?.balance)}</strong>
+                    </article>
+                    <article>
+                      <small>冻结积分</small>
+                      <strong>{n(detail.wallet?.frozen)}</strong>
+                    </article>
+                  </div>
+                  <form
+                    className="admin-form"
+                    onSubmit={(e) => {
+                      const d = form(e);
+                      void act(
+                        () =>
+                          api("/platform/personal-credits", "POST", {
+                            ...d,
+                            userId: detail.id,
+                            amount: Number(d.amount),
+                            eventKey: crypto.randomUUID(),
+                          }),
+                        "个人积分已调整",
+                      );
+                    }}
+                  >
+                    <h3 className="wide">调整个人积分</h3>
+                    <label>
+                      个人调整积分
+                      <input
+                        name="amount"
+                        type="number"
+                        step="0.000001"
+                        placeholder="正数增加，负数扣减"
+                        required
+                      />
+                    </label>
+                    <label>
+                      个人调整原因
+                      <input name="reason" minLength={3} required />
+                    </label>
+                    <button className="button dark" disabled={busy}>
+                      确认调整个人积分
+                    </button>
+                  </form>
+                  <h3>该用户创建的团队</h3>
+                  <p className="muted">
+                    仅列出创建者为该用户的团队；受邀加入的团队不在此列。
+                  </p>
+                  {(detail.createdTeams ?? []).map((t: any) => (
+                    <form
+                      className="admin-form"
+                      key={t.id}
+                      onSubmit={(e) => {
+                        const d = form(e);
+                        void act(
+                          () =>
+                            api("/platform/credits", "POST", {
+                              ...d,
+                              teamId: t.id,
+                              amount: Number(d.amount),
+                              eventKey: crypto.randomUUID(),
+                            }),
+                          "团队公共积分已调整",
+                        );
+                      }}
+                    >
+                      <h4 className="wide">
+                        {t.name}
+                        {t.archived ? "（已归档）" : ""}
+                      </h4>
+                      <p className="wide">
+                        余额 {n(t.wallet?.balance)} · 冻结 {n(t.wallet?.frozen)}{" "}
+                        · 可用{" "}
+                        {n(
+                          Number(t.wallet?.balance ?? 0) -
+                            Number(t.wallet?.frozen ?? 0),
+                        )}
+                      </p>
+                      <label>
+                        团队调整积分
+                        <input
+                          name="amount"
+                          type="number"
+                          step="0.000001"
+                          required
+                        />
+                      </label>
+                      <label>
+                        团队调整原因
+                        <input name="reason" minLength={3} required />
+                      </label>
+                      <button className="button" disabled={busy || t.archived}>
+                        确认调整团队积分
+                      </button>
+                    </form>
+                  ))}
+                  {!detail.createdTeams?.length && (
+                    <p className="muted">该用户尚未创建团队。</p>
+                  )}
+                  <h3>积分调整记录</h3>
+                  <div className="team-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>时间</th>
+                          <th>积分变动</th>
+                          <th>原因</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.ledger.map((l: any) => (
+                          <tr key={l.id}>
+                            <td>{new Date(l.createdAt).toLocaleString()}</td>
+                            <td>{n(l.amount)}</td>
+                            <td>{l.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                   <h3>个人用量</h3>
                   <div className="team-table">
                     <table>
@@ -1021,159 +1253,10 @@ export default function AdminConsole() {
                     </table>
                   </div>
                   <button className="button" onClick={() => setDetail(null)}>
-                    收起详情
+                    关闭详情
                   </button>
-                </section>
+                </UserDialog>
               )}
-            </>
-          )}
-          {tab === "credits" && (
-            <>
-              <h2>积分管理</h2>
-              <p className="muted">
-                1元对应100积分。个人余额全平台通用，团队公共池可分配给成员。
-              </p>
-              <form
-                className="admin-form"
-                onSubmit={(e) => {
-                  const d = form(e);
-                  void act(
-                    () =>
-                      api("/platform/personal-credits", "POST", {
-                        ...d,
-                        amount: Number(d.amount),
-                        eventKey: crypto.randomUUID(),
-                      }),
-                    "个人积分已调整",
-                  );
-                }}
-              >
-                <h3 className="wide">调整个人积分</h3>
-                <label>
-                  用户
-                  <select name="userId" required>
-                    {users.items.map((u: any) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} · {u.email ?? u.phone}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  调整积分
-                  <input
-                    name="amount"
-                    type="number"
-                    step="0.000001"
-                    placeholder="正数增加，负数扣减"
-                    required
-                  />
-                </label>
-                <label className="wide">
-                  调整原因
-                  <input name="reason" minLength={3} required />
-                </label>
-                <button className="button dark" disabled={busy}>
-                  确认调整个人积分
-                </button>
-              </form>
-              <form
-                className="admin-form"
-                onSubmit={(e) => {
-                  const d = form(e);
-                  void act(
-                    () =>
-                      api("/platform/credits", "POST", {
-                        ...d,
-                        amount: Number(d.amount),
-                        eventKey: crypto.randomUUID(),
-                      }),
-                    "团队公共积分已调整",
-                  );
-                }}
-              >
-                <h3 className="wide">调整团队公共池</h3>
-                <label>
-                  团队
-                  <select name="teamId">
-                    {teams.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} · 可用{" "}
-                        {n(
-                          Number(t.wallet?.balance) - Number(t.wallet?.frozen),
-                        )}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  调整积分
-                  <input name="amount" type="number" step="0.000001" required />
-                </label>
-                <label className="wide">
-                  调整原因
-                  <input name="reason" minLength={3} required />
-                </label>
-                <button className="button" disabled={busy}>
-                  确认调整团队积分
-                </button>
-              </form>
-              <AllocationForm
-                teams={teams}
-                busy={busy}
-                onSave={(d: any) =>
-                  act(
-                    () =>
-                      api(`/teams/${d.teamId}/credit-allocations`, "POST", {
-                        userId: d.userId,
-                        amount: Number(d.amount),
-                        reason: d.reason,
-                        eventKey: crypto.randomUUID(),
-                      }),
-                    "积分已分配到个人余额",
-                  )
-                }
-              />
-              <h3>待对账调用</h3>
-              <p className="muted">
-                只有取得费用依据后才能人工结算，确认未收费可填0。
-              </p>
-              {pending.map((p) => (
-                <form
-                  className="inline-form"
-                  key={p.id}
-                  onSubmit={(e) => {
-                    const d = form(e);
-                    void act(() =>
-                      api("/platform/reconcile/" + p.id, "POST", {
-                        costCny: Number(d.costCny),
-                        reason: d.reason,
-                      }),
-                    );
-                  }}
-                >
-                  <span>
-                    {p.model} · 冻结 {n(p.reserved)} · {p.error}
-                  </span>
-                  <label>
-                    实际人民币费用
-                    <input
-                      type="number"
-                      name="costCny"
-                      min="0"
-                      step="0.000001"
-                      required
-                    />
-                  </label>
-                  <label>
-                    对账依据
-                    <input name="reason" minLength={3} required />
-                  </label>
-                  <button className="button" disabled={busy}>
-                    对账结算
-                  </button>
-                </form>
-              ))}
             </>
           )}
         </section>
@@ -1321,5 +1404,46 @@ function PriceForm({ channels, busy, onSave }: any) {
         发布价格
       </button>
     </form>
+  );
+}
+
+function UserDialog({
+  children,
+  onClose,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    ref.current?.showModal();
+    const old = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = old;
+    };
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      className="admin-user-dialog admin-console"
+      aria-label="用户详情"
+      onCancel={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="admin-dialog-body">
+        <button
+          type="button"
+          className="account-close admin-dialog-close"
+          aria-label="关闭用户详情"
+          onClick={onClose}
+        >
+          <X size={22} />
+        </button>
+        {children}
+      </div>
+    </dialog>
   );
 }

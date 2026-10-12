@@ -539,6 +539,11 @@ export function openapi() {
       "Platform admin: Shanghai daily registrations, model invocations and charged credits; fourteen-day trend and recent failed calls",
     ],
     [
+      "/platform/rates/confirm-current",
+      "post",
+      "Platform admin: confirm current configured prices with new immutable verified versions; preserve historical rates",
+    ],
+    [
       "/platform/settings",
       "get",
       "Platform admin: default estimated request price",
