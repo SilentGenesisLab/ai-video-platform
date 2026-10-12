@@ -1,4 +1,5 @@
 "use client";
+import Select from "./select";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Markdown from "react-markdown";
@@ -88,7 +89,7 @@ const insightLists: {
       sourceUrl: "",
     },
     fields: [
-      { key: "title", label: "卖点标题" },
+      { key: "title", label: "卖点描述" },
       { key: "feature", label: "产品特点" },
       { key: "benefit", label: "用户收益" },
       ...evidence,
@@ -206,7 +207,7 @@ function EditorField({
     <label className="pd-field">
       {label}
       {field.type === "select" ? (
-        <select
+        <Select
           aria-label={label}
           value={value ?? ""}
           disabled={readOnly}
@@ -217,9 +218,9 @@ function EditorField({
               {t}
             </option>
           ))}
-        </select>
+        </Select>
       ) : field.type === "files" ? (
-        <select
+        <Select
           aria-label={label}
           multiple={field.key === "fileIds"}
           value={value ?? (field.key === "fileIds" ? [] : "")}
@@ -238,7 +239,7 @@ function EditorField({
               {f.name}
             </option>
           ))}
-        </select>
+        </Select>
       ) : field.type === "tags" ? (
         <input
           aria-label={label}
@@ -283,7 +284,13 @@ function Rows({
   files: any[];
   render?: (row: any) => React.ReactNode;
 }) {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const knownRows = useRef(new Set(rows.map((row) => row.id)));
+  useEffect(() => {
+    const added = rows.filter((row) => !knownRows.current.has(row.id));
+    if (added.length) setExpanded(added[added.length - 1].id);
+    knownRows.current = new Set(rows.map((row) => row.id));
+  }, [rows]);
   function move(i: number, delta: number) {
     const result = [...rows];
     [result[i], result[i + delta]] = [result[i + delta], result[i]];
@@ -299,12 +306,11 @@ function Rows({
         {!readOnly && (
           <button
             className="button"
-            onClick={() =>
-              onChange([
-                ...rows,
-                { ...structuredClone(empty), id: crypto.randomUUID() },
-              ])
-            }
+            onClick={() => {
+              const id = crypto.randomUUID();
+              onChange([...rows, { ...structuredClone(empty), id }]);
+              setExpanded(id);
+            }}
           >
             <Plus size={15} />
             添加{noun}
@@ -322,10 +328,8 @@ function Rows({
             <div className="pd-row-head">
               <button
                 className="pd-row-toggle"
-                aria-expanded={!collapsed[row.id]}
-                onClick={() =>
-                  setCollapsed({ ...collapsed, [row.id]: !collapsed[row.id] })
-                }
+                aria-expanded={expanded === row.id}
+                onClick={() => setExpanded(expanded === row.id ? null : row.id)}
               >
                 <span className="pd-number">
                   {String(index + 1).padStart(2, "0")}
@@ -333,7 +337,7 @@ function Rows({
                 <strong>
                   {row.title || row.name || row.text || `新${noun}`}
                 </strong>
-                <span>{collapsed[row.id] ? "展开" : "收起"}</span>
+                <span>{expanded === row.id ? "收起" : "展开"}</span>
               </button>
               {!readOnly && (
                 <div className="pd-row-actions">
@@ -370,7 +374,7 @@ function Rows({
                 </div>
               )}
             </div>
-            {!collapsed[row.id] && (
+            {expanded === row.id && (
               <div className="pd-row-content">
                 {render?.(row)}
                 <div className="pd-fields">
@@ -936,7 +940,7 @@ export default function ProductDetail({
           !readOnly && (
             <>
               {!isReference && (
-                <select
+                <Select
                   aria-label="上传分类"
                   value={uploadCategory}
                   onChange={(e) => setUploadCategory(e.target.value)}
@@ -947,7 +951,7 @@ export default function ProductDetail({
                       {t}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
               <label className="button primary">
                 <Upload size={16} />
@@ -1197,7 +1201,7 @@ export default function ProductDetail({
               </label>
               <label className="pd-field">
                 产品状态
-                <select
+                <Select
                   aria-label="产品状态"
                   value={draft.status}
                   disabled={readOnly}
@@ -1216,7 +1220,7 @@ export default function ProductDetail({
                       {t}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <div className="pd-full">
                 <EditorField
@@ -1251,7 +1255,7 @@ export default function ProductDetail({
             {!readOnly && (
               <label className="pd-field">
                 选择封面
-                <select
+                <Select
                   value={content.coverFileId ?? ""}
                   onChange={(e) =>
                     change("coverFileId", e.target.value || undefined)
@@ -1265,7 +1269,7 @@ export default function ProductDetail({
                         {f.name}
                       </option>
                     ))}
-                </select>
+                </Select>
               </label>
             )}
             <div className="pd-stat">
@@ -1422,7 +1426,7 @@ export default function ProductDetail({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            <select
+            <Select
               aria-label="素材分类筛选"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
@@ -1433,7 +1437,7 @@ export default function ProductDetail({
                   {t}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="pd-material-grid">
             {materialRows.map((m: any) => {
@@ -1454,37 +1458,41 @@ export default function ProductDetail({
                     ) && <span className="pd-pending">待保存</span>}
                   </div>
                   <FileView id={m.fileId} onZoom={setZoom} />
-                  <label className="pd-field">
-                    素材名称
-                    <input
-                      value={m.title}
-                      readOnly={readOnly}
-                      onChange={(e) => update({ title: e.target.value })}
-                    />
-                  </label>
-                  <label className="pd-field">
-                    分类
-                    <select
-                      value={m.category}
-                      disabled={readOnly}
-                      onChange={(e) => update({ category: e.target.value })}
-                    >
-                      {Object.entries(categories).map(([v, t]) => (
-                        <option key={v} value={v}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="pd-field">
-                    备注
-                    <textarea
-                      rows={2}
-                      value={m.note}
-                      readOnly={readOnly}
-                      onChange={(e) => update({ note: e.target.value })}
-                    />
-                  </label>
+                  <h3 className="pd-material-name">{m.title || file?.name}</h3>
+                  <details className="pd-material-edit">
+                    <summary>编辑资料信息</summary>
+                    <label className="pd-field">
+                      素材名称
+                      <input
+                        value={m.title}
+                        readOnly={readOnly}
+                        onChange={(e) => update({ title: e.target.value })}
+                      />
+                    </label>
+                    <label className="pd-field">
+                      分类
+                      <Select
+                        value={m.category}
+                        disabled={readOnly}
+                        onChange={(e) => update({ category: e.target.value })}
+                      >
+                        {Object.entries(categories).map(([v, t]) => (
+                          <option key={v} value={v}>
+                            {t}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                    <label className="pd-field">
+                      备注
+                      <textarea
+                        rows={2}
+                        value={m.note}
+                        readOnly={readOnly}
+                        onChange={(e) => update({ note: e.target.value })}
+                      />
+                    </label>
+                  </details>
                   <span className="muted small">
                     {parseLabels[file?.parseStatus] ??
                       file?.parseStatus ??
@@ -1493,6 +1501,15 @@ export default function ProductDetail({
                   {file?.parseError && (
                     <p className="error">{file.parseError}</p>
                   )}
+                  {file?.parseError &&
+                    /采购价|转写型号/.test(file.parseError) && (
+                      <a
+                        className="button"
+                        href="/team?tab=platform#purchase-rates"
+                      >
+                        配置解析采购价
+                      </a>
+                    )}
                   {file?.parseStatus === "failed" && !readOnly && (
                     <button
                       className="button"
@@ -1612,8 +1629,11 @@ export default function ProductDetail({
         </>
       )}
       {!!uploads.length && (
-        <section className="pd-panel pd-upload-queue">
-          <h3>上传记录</h3>
+        <details
+          className="pd-panel pd-upload-queue"
+          open={uploads.some((u) => u.status !== "ready")}
+        >
+          <summary>上传记录 · {uploads.length} 个文件</summary>
           {uploads.map((u) => (
             <div key={u.key}>
               <span>{u.file.name}</span>
@@ -1632,7 +1652,7 @@ export default function ProductDetail({
               )}
             </div>
           ))}
-        </section>
+        </details>
       )}
       {mergeLatest && (
         <div className="modal-backdrop">
@@ -1672,7 +1692,7 @@ export default function ProductDetail({
                     </pre>
                   </div>
                 </div>
-                <select
+                <Select
                   aria-label={`合并${fieldNames[key] ?? key}`}
                   value={mergeChoices[key] ?? ""}
                   onChange={(e) =>
@@ -1682,7 +1702,7 @@ export default function ProductDetail({
                   <option value="">请选择保留内容</option>
                   <option value="local">保留当前草稿</option>
                   <option value="server">使用服务器最新内容</option>
-                </select>
+                </Select>
               </section>
             ))}
             {!mergeConflicts.length && <p>没有重叠修改，可以直接合并。</p>}

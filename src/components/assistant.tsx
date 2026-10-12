@@ -1,4 +1,5 @@
 "use client";
+import Select from "./select";
 import {
   createContext,
   useContext,
@@ -635,6 +636,18 @@ function AssistantPanel({
       setBusy(false);
     }
   }
+  const [stopPending, setStopPending] = useState(false);
+  async function stop() {
+    if (!active || stopPending || readOnly) return;
+    setStopPending(true);
+    try {
+      await api("/agent-runs/" + run.id + "/stop", "POST", {});
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setStopPending(false);
+    }
+  }
   async function send() {
     if (
       readOnly ||
@@ -771,7 +784,7 @@ function AssistantPanel({
         </button>
       </header>
       <div className="chat-select">
-        <select
+        <Select
           aria-label="选择会话"
           disabled={!hydrated}
           value={id}
@@ -783,7 +796,7 @@ function AssistantPanel({
               {c.title}
             </option>
           ))}
-        </select>
+        </Select>
         <button
           className="icon-button"
           aria-label="新对话"
@@ -870,43 +883,23 @@ function AssistantPanel({
             {toolStatus}
           </p>
         )}
-        {run && (
-          <div className="run-status">
-            <span>{states[run.status] ?? run.status}</span>
-            {!readOnly &&
-              (active ? (
-                <button
-                  className="button"
-                  onClick={() =>
-                    void api(
-                      "/agent-runs/" + run.id + "/stop",
-                      "POST",
-                      {},
-                    ).catch((e) => setNotice(e.message))
-                  }
-                >
-                  <Pause size={14} />
-                  停止
-                </button>
-              ) : (
-                ["paused", "failed", "stopped"].includes(run.status) && (
-                  <button
-                    className="button"
-                    onClick={() =>
-                      void api(
-                        "/agent-runs/" + run.id + "/continue",
-                        "POST",
-                        {},
-                      ).catch((e) => setNotice(e.message))
-                    }
-                  >
-                    <Play size={14} />
-                    继续
-                  </button>
-                )
-              ))}
-          </div>
-        )}
+        {!readOnly &&
+          run &&
+          ["paused", "failed", "stopped"].includes(run.status) && (
+            <button
+              className="button"
+              onClick={() =>
+                void api(
+                  "/agent-runs/" + run.id + "/continue",
+                  "POST",
+                  {},
+                ).catch((e) => setNotice(e.message))
+              }
+            >
+              <Play size={14} />
+              继续
+            </button>
+          )}
       </div>
       {newContent && (
         <button
@@ -1042,17 +1035,19 @@ function AssistantPanel({
           </div>
           <button
             className="button primary"
-            aria-label="发送消息"
+            aria-label={active ? "暂停生成" : "发送消息"}
+            title={active ? "暂停生成" : "发送消息"}
             disabled={
               readOnly ||
-              busy ||
-              active ||
-              importJobs.length > 0 ||
-              (!text.trim() && !draftIds.length)
+              stopPending ||
+              (!active &&
+                (busy ||
+                  importJobs.length > 0 ||
+                  (!text.trim() && !draftIds.length)))
             }
-            onClick={() => void send()}
+            onClick={() => (active ? void stop() : void send())}
           >
-            <Send size={17} />
+            {active ? <Pause size={17} /> : <Send size={17} />}
           </button>
         </div>
       </div>
@@ -1064,7 +1059,7 @@ function AssistantPanel({
         >
           <h3>保存附件到产品</h3>
           <p>{saveFile.name}</p>
-          <select
+          <Select
             aria-label="目标产品"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
@@ -1074,7 +1069,7 @@ function AssistantPanel({
                 {p.title}
               </option>
             ))}
-          </select>
+          </Select>
           <div>
             <button className="button" onClick={() => setSaveFile(null)}>
               取消

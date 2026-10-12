@@ -5,9 +5,11 @@ import { readFile } from "node:fs/promises";
 const base = process.env.APP_URL ?? "http://127.0.0.1:3012";
 async function login(page: any) {
   await page.goto(base + "/login");
-  await page.getByRole("tab", {name:"邮箱密码"}).click();
+  await page.getByRole("tab", { name: "邮箱密码" }).click();
   await page.getByLabel("邮箱").fill(process.env.ADMIN_EMAIL!);
-  await page.locator('input[name="password"]').fill(process.env.ADMIN_PASSWORD!);
+  await page
+    .locator('input[name="password"]')
+    .fill(process.env.ADMIN_PASSWORD!);
   await page.getByRole("button", { name: "进入工作台" }).click();
   await expect(page.getByRole("heading", { name: "产品管理." })).toBeVisible();
 }
@@ -36,7 +38,7 @@ test("@production product page, structured insight, Brief, references and histor
   const detailUrl = page.url();
   await page.getByRole("button", { name: "产品洞察", exact: true }).click();
   await page.getByRole("button", { name: "添加卖点", exact: true }).click();
-  await page.getByLabel("卖点标题", { exact: true }).fill("增加停车容量");
+  await page.getByLabel("卖点描述", { exact: true }).fill("增加停车容量");
   await page
     .getByLabel("用户收益", { exact: true })
     .fill("有限空间停放更多车辆");
@@ -58,6 +60,10 @@ test("@production product page, structured insight, Brief, references and histor
   await page.reload();
   await expect(page.getByLabel("产品 Brief Markdown")).toHaveValue(brief);
   await page.getByRole("button", { name: "产品洞察", exact: true }).click();
+  await page
+    .locator(".pd-row-toggle")
+    .filter({ hasText: "园区管理者" })
+    .click();
   await expect(page.getByLabel("购买顾虑", { exact: true })).toHaveValue(
     "维护频率",
   );

@@ -1,4 +1,5 @@
 import { scheduleSchema, priceMultiplier } from "./price-schedule";
+import { deepseekOfficialPrice } from "./official-prices";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, systemDb, withTeam } from "./db";
@@ -204,11 +205,9 @@ export async function rateLine(
       JSON.stringify(tokenInput.messages ?? []) +
       JSON.stringify(tokenInput.tools ?? []);
     const inputTokens =
-      kind === "video_understanding"
-        ? 262144
-        : serialized.includes("image_url")
-          ? 1000000
-          : Buffer.byteLength(serialized, "utf8") + 4096;
+      kind === "video_understanding" || serialized.includes("image_url")
+        ? 1000000
+        : Buffer.byteLength(serialized, "utf8") + 4096;
     assert(inputTokens <= 1000000, 422, "输入上下文过长");
     units = inputTokens;
     cost = D.max(rate.inputRate ?? 0, rate.cachedInputRate ?? 0)
@@ -608,6 +607,47 @@ export async function billingRoute(
           orderBy: { createdAt: "desc" },
         }),
       };
+    if (id === "rates" && action === "official-deepseek" && method === "POST") {
+      const channels = await systemDb.channel.findMany({
+        where: { provider: "deepseek", enabled: true },
+      });
+      const items = [],
+        skipped = [];
+      for (const c of channels) {
+        if (c.baseUrl.replace(/\/$/, "") !== "https://api.deepseek.com")
+          continue;
+        for (const kind of ["text", "vision"] as const) {
+          if (!(c.models as any)[kind]?.includes(deepseekOfficialPrice.model))
+            continue;
+          const existing = await systemDb.purchaseRate.findFirst({
+            where: {
+              channelId: c.id,
+              model: deepseekOfficialPrice.model,
+              kind,
+              supplier: "",
+              resolution: "",
+            },
+          });
+          if (existing) {
+            skipped.push(existing.id);
+            continue;
+          }
+          items.push(
+            await saveRate(a, {
+              channelId: c.id,
+              kind,
+              model: deepseekOfficialPrice.model,
+              unit: "token",
+              rate: deepseekOfficialPrice.rate,
+              inputRate: deepseekOfficialPrice.inputRate,
+              cachedInputRate: deepseekOfficialPrice.cachedInputRate,
+              basis: deepseekOfficialPrice.basis,
+            }),
+          );
+        }
+      }
+      return { items, skipped, source: deepseekOfficialPrice.source };
+    }
     if (id === "rates" && method === "POST") return saveRate(a, body);
     if (id === "teams" && method === "GET") {
       const teams = await systemDb.team.findMany({

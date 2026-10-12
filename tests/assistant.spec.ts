@@ -212,3 +212,78 @@ test("ASSISTANT-04 attachment-only send parses before model and preserves origin
   expect(file.extractedText).toContain("QX732");
   expect(file.productId).toBeNull();
 });
+
+test("ASSISTANT-04 composer changes from send to pause and hides run status", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as any).__assistantStream = null;
+    (window as any).EventSource = class {
+      listeners: Record<string, any> = {};
+      constructor() {
+        (window as any).__assistantStream = this;
+      }
+      addEventListener(name: string, listener: any) {
+        this.listeners[name] = listener;
+      }
+      close() {}
+    };
+  });
+  await page.route("**/api/v1/conversations", async (route) =>
+    route.fulfill({
+      json: { items: [{ id: "pause-fixture", title: "暂停按钮验收" }] },
+    }),
+  );
+  await page.route("**/api/v1/conversations/pause-fixture", async (route) =>
+    route.fulfill({
+      json: {
+        id: "pause-fixture",
+        title: "暂停按钮验收",
+        cursor: "0",
+        messages: [],
+        runs: [{ id: "pause-run", status: "running" }],
+      },
+    }),
+  );
+  let stops = 0;
+  await page.route("**/api/v1/agent-runs/pause-run/stop", async (route) => {
+    stops++;
+    await route.fulfill({ json: { status: "stopped" } });
+    await page.evaluate(() =>
+      (window as any).__assistantStream.listeners.update({
+        data: JSON.stringify({
+          seq: "1",
+          type: "run",
+          runId: "pause-run",
+          data: { status: "stopped" },
+        }),
+      }),
+    );
+  });
+  await login(page);
+  await page.getByRole("button", { name: "创作搭档", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "创意助手" });
+  await expect(panel.locator(".run-status")).toHaveCount(0);
+  await expect(
+    panel.getByRole("button", { name: "暂停生成", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    panel.getByRole("button", { name: "停止", exact: true }),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Boolean((window as any).__assistantStream?.listeners.update),
+      ),
+    )
+    .toBeTruthy();
+  await panel.getByRole("button", { name: "暂停生成", exact: true }).click();
+  await expect(
+    panel.getByRole("button", { name: "发送消息", exact: true }),
+  ).toBeVisible();
+  expect(stops).toBe(1);
+  await panel.getByLabel("发送给创作搭档").fill("保留暂停后的草稿");
+  await expect(
+    panel.getByRole("button", { name: "发送消息", exact: true }),
+  ).toBeEnabled();
+});

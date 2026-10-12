@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Brand, ProductScene } from "./landing";
+import { accountLinks } from "./account-links";
+import { readApiResponse } from "./api";
 export function PasswordInput(props: InputHTMLAttributes<HTMLInputElement>) {
   const [show, setShow] = useState(false);
   return (
@@ -31,9 +33,7 @@ async function request(path: string, data: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  const b = await r.json().catch(() => {
-    throw new Error("登录服务暂时不可用，请稍后重试");
-  });
+  const b = await readApiResponse(r);
   if (!r.ok) throw new Error(b.error?.message ?? "请求失败，请重试");
   return b;
 }
@@ -333,6 +333,23 @@ export default function AuthForm({
               )}
             </>
           )}
+        </div>
+        <div className="auth-protocols">
+          <a
+            href={accountLinks.agreement}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            产品用户协议
+          </a>
+          <span>·</span>
+          <a
+            href={accountLinks.privacy}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            隐私政策
+          </a>
         </div>
         <span className="auth-bottom">FRAMEFLOW · YOUR CREATIVE WORKSPACE</span>
       </section>

@@ -1,3 +1,4 @@
+import { chooseSelect } from "./select-helper";
 import { db } from "../src/lib/db";
 import bcrypt from "bcryptjs";
 import { test, expect, type Page, type Locator } from "@playwright/test";
@@ -223,10 +224,10 @@ test("FORM-01 structured selling points preserve order and multiline details", a
   const d = await createUI(page, "新建产品", prefix + " structured");
   await d.getByRole("button", { name: "产品洞察", exact: true }).click();
   await d.getByRole("button", { name: "添加卖点", exact: true }).click();
-  await d.getByLabel("卖点标题", { exact: true }).fill("first");
+  await d.getByLabel("卖点描述", { exact: true }).fill("first");
   await d.getByLabel("用户收益", { exact: true }).fill("line one\nline two");
   await d.getByRole("button", { name: "添加卖点", exact: true }).click();
-  await d.getByLabel("卖点标题", { exact: true }).nth(1).fill("second");
+  await d.getByLabel("卖点描述", { exact: true }).fill("second");
   await d.getByRole("button", { name: "上移卖点", exact: true }).nth(1).click();
   const product = await save(page, "products");
   expect(product.content.sellingPoints).toEqual(["second", "first"]);
@@ -242,7 +243,7 @@ test("FORM-02 fact editor distinguishes fact and hypothesis without JSON", async
   await d.getByRole("button", { name: "产品洞察", exact: true }).click();
   await d.getByRole("button", { name: "添加事实或假设", exact: true }).click();
   await d.getByLabel("内容", { exact: true }).fill("Verified fact");
-  await d.getByLabel("证据状态", { exact: true }).selectOption("fact");
+  await chooseSelect(d, "证据状态", "fact");
   const product = await save(page, "products");
   expect(product.content.facts[0].kind).toBe("fact");
   expect(product.content.facts[0].id).toBeTruthy();
@@ -255,8 +256,8 @@ test("BOARD-01 deleting then adding a shot never duplicates its number", async (
   const plan = await seed(page, "plans", { productId: p.id });
   await navigate(page, "创意策划", "工业分镜");
   const d = await createUI(page, "新建工业分镜", prefix + " board");
-  await d.getByLabel("所属产品").selectOption(p.id);
-  await d.getByLabel("关联策划案").selectOption(plan.id);
+  await chooseSelect(d, "所属产品", p.id);
+  await chooseSelect(d, "关联策划案", plan.id);
   await d.getByRole("button", { name: "添加镜头" }).click();
   await d.getByRole("button", { name: "添加镜头" }).click();
   await d.locator(".shot-row").first().locator("summary").click();
@@ -296,7 +297,7 @@ test("PRODUCT-01 product history, version conflict and archive", async ({
   await d.getByRole("button", { name: "历史版本", exact: true }).click();
   await expect(page.locator(".pd-history-revision")).toHaveCount(2);
   await page.getByRole("button", { name: "关闭历史版本" }).click();
-  await d.getByLabel("产品状态", { exact: true }).selectOption("archived");
+  await chooseSelect(d, "产品状态", "archived");
   await save(page, "products", true);
   await page.getByLabel("已归档", { exact: true }).check();
   await page.getByLabel("搜索", { exact: true }).fill(p.title);
@@ -337,7 +338,7 @@ test("FLOW-01 product to creative, plan, storyboard, asset, script and video rej
   ])
     await d.getByLabel(label, { exact: true }).fill(label + " test");
   await d.getByLabel("人工评分（0–10）").fill("8");
-  await d.getByLabel("状态", { exact: true }).selectOption("selected");
+  await chooseSelect(d, "状态", "selected");
   const concept = await save(page, "concepts");
   await page.getByRole("button", { name: "策划案", exact: true }).click();
   d = await createUI(page, "新建策划案", prefix + " plan");
@@ -352,7 +353,7 @@ test("FLOW-01 product to creative, plan, storyboard, asset, script and video rej
     .getByRole("button", { name: "查看分镜" })
     .click();
   d = await createUI(page, "新建工业分镜", prefix + " board");
-  await d.getByLabel("关联策划案").selectOption(plan.id);
+  await chooseSelect(d, "关联策划案", plan.id);
   await d.getByRole("button", { name: "添加镜头" }).click();
   await d
     .locator(".shot-row")
@@ -361,15 +362,15 @@ test("FLOW-01 product to creative, plan, storyboard, asset, script and video rej
   const board = await save(page, "storyboards");
   await navigate(page, "资产制作");
   d = await createUI(page, "新建资产", prefix + " asset");
-  await d.getByLabel("所属产品").selectOption(p.id);
-  await d.getByLabel("关联策划案").selectOption(plan.id);
-  await d.getByLabel("资产分类").selectOption("product");
+  await chooseSelect(d, "所属产品", p.id);
+  await chooseSelect(d, "关联策划案", plan.id);
+  await chooseSelect(d, "资产分类", "product");
   await d.getByLabel("制作提示词").fill("A single consistent desk lamp");
   const asset = await save(page, "assets");
   await navigate(page, "视频制作", "制作脚本");
   d = await createUI(page, "新建脚本", prefix + " script");
-  await d.getByLabel("所属产品").selectOption(p.id);
-  await d.getByLabel("关联策划案").selectOption(plan.id);
+  await chooseSelect(d, "所属产品", p.id);
+  await chooseSelect(d, "关联策划案", plan.id);
   await d
     .getByLabel("制作提示词")
     .fill("Slow camera push towards the desk lamp");
@@ -380,10 +381,10 @@ test("FLOW-01 product to creative, plan, storyboard, asset, script and video rej
   const script = await save(page, "scripts");
   await page.getByRole("button", { name: "提交制作", exact: true }).click();
   d = page.getByRole("dialog");
-  await d.getByLabel("制作类型").selectOption("video");
+  await chooseSelect(d, "制作类型", "video");
   await d.getByLabel("批次名称").fill(prefix + " approval");
-  await d.getByLabel("产品", { exact: true }).selectOption(p.id);
-  await d.getByLabel("策划案", { exact: true }).selectOption(plan.id);
+  await chooseSelect(d, "产品", p.id);
+  await chooseSelect(d, "策划案", plan.id);
   await d.getByLabel("制作提示词").fill(script.content.prompt);
   await d.getByLabel("关联资产 / 分镜 / 脚本 ID").fill(script.id);
   const created = page.waitForResponse(
@@ -495,8 +496,8 @@ test("FILE-02 silent video upload, playback, delivery and incomplete lineage", a
     .toBe("completed");
   await navigate(page, "视频制作", "成片交付");
   const d = await createUI(page, "新建成片", prefix + " delivery");
-  await d.getByLabel("所属产品").selectOption(p.id);
-  await d.getByLabel("关联策划案").selectOption(plan.id);
+  await chooseSelect(d, "所属产品", p.id);
+  await chooseSelect(d, "关联策划案", plan.id);
   await d.getByLabel("成片文件 ID").fill(fileId);
   const delivery = await save(page, "deliverables");
   const card = page
@@ -526,7 +527,7 @@ test("SEARCH-01 older records remain reachable through search and pagination", a
     if (!i) first = c;
   }
   await navigate(page, "创意策划");
-  await page.getByLabel("按产品筛选").selectOption(p.id);
+  await chooseSelect(page, "按产品筛选", p.id);
   await expect(page.locator(".resource-card")).toHaveCount(30);
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(page.locator(".resource-card")).toHaveCount(1);
@@ -574,7 +575,7 @@ test("BOARD-02 10-shot overview yields two pages and retains input revision", as
   expect(done.result.files).toHaveLength(2);
   expect(done.result.source.version).toBe(b.version);
   await navigate(page, "日志状态");
-  await page.getByLabel("按产品筛选").selectOption(p.id);
+  await chooseSelect(page, "按产品筛选", p.id);
   await page
     .getByRole("row")
     .filter({ hasText: job.id.slice(0, 8) })
@@ -602,12 +603,12 @@ test("GEN-01 switching channel uses that channel's supported model", async ({
   await navigate(page, "资产制作");
   await page.getByRole("button", { name: "提交制作", exact: true }).click();
   const d = page.getByRole("dialog");
-  await d.getByLabel("产品", { exact: true }).selectOption(p.id);
-  await d.getByLabel("生成渠道").selectOption(c.id);
+  await chooseSelect(d, "产品", p.id);
+  await chooseSelect(d, "生成渠道", c.id);
   await expect(d.getByLabel("模型", { exact: true })).toHaveValue(
     "custom-image-fixture",
   );
-  await d.getByLabel("制作类型").selectOption("audio");
+  await chooseSelect(d, "制作类型", "audio");
   await d.getByLabel("制作提示词").fill("Do not submit this fixture");
   await expect(d.getByRole("button", { name: "获取积分报价" })).toBeDisabled();
   await d.getByRole("button", { name: "取消", exact: true }).click();

@@ -91,6 +91,38 @@ export function openapi() {
   };
   const extras: [string, string, string, unknown?][] = [
     ["/auth/me", "get", "Current identity and effective permissions"],
+    [
+      "/auth/profile",
+      "get",
+      "Own profile with masked phone and expiring avatar URL; human session only",
+    ],
+    [
+      "/auth/profile",
+      "patch",
+      "Update own display name; human session only",
+      z.toJSONSchema(z.object({ name: z.string().min(1).max(60) })),
+    ],
+    [
+      "/auth/change-password",
+      "post",
+      "Verify current password and revoke other sessions; human session only",
+      z.toJSONSchema(
+        z.object({
+          currentPassword: z.string(),
+          password: z.string().min(12).max(72),
+        }),
+      ),
+    ],
+    [
+      "/feedback",
+      "get",
+      "Own feedback, or current team feedback for platform administrators; human session only",
+    ],
+    [
+      "/feedback/{id}/attachments",
+      "get",
+      "Short-lived attachment download links for submitter or platform administrator",
+    ],
     ["/api-keys", "get", "List owned platform keys; human session only"],
     [
       "/api-keys",
@@ -481,6 +513,12 @@ export function openapi() {
     ],
     ["/platform/rates", "get", "Platform admin: procurement price versions"],
     [
+      "/platform/rates/official-deepseek",
+      "post",
+      "Platform admin: initialize missing verified DeepSeek CNY ceiling rates without overwriting existing prices",
+      obj({}),
+    ],
+    [
       "/platform/rates",
       "post",
       "Platform admin: append RMB procurement price",
@@ -590,6 +628,51 @@ export function openapi() {
     ],
   ] as const)
     (paths[path] as any).get.parameters.push(...params);
+  for (const [path, summary, properties] of [
+    [
+      "/api/v1/auth/avatar",
+      "Upload own avatar (PNG/JPEG/WebP, at most 512KB); human session only",
+      { file: { type: "string", format: "binary" } },
+    ],
+    [
+      "/api/v1/feedback",
+      "Submit feedback with at most 3 attachments, each at most 5MB; human session only",
+      {
+        type: {
+          type: "string",
+          enum: ["产品建议", "问题反馈", "使用咨询", "其他"],
+        },
+        content: { type: "string", minLength: 5, maxLength: 2000 },
+        files: {
+          type: "array",
+          maxItems: 3,
+          items: { type: "string", format: "binary" },
+        },
+      },
+    ],
+  ] as const) {
+    paths[path] = {
+      ...((paths[path] as object) ?? {}),
+      post: {
+        ...operation(summary),
+        security: [{ session: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                properties,
+                required: path.endsWith("avatar")
+                  ? ["file"]
+                  : ["type", "content"],
+              },
+            },
+          },
+        },
+      },
+    };
+  }
   return {
     openapi: "3.1.0",
     info: {

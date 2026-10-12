@@ -707,3 +707,73 @@
 .pd-heading-cover .pd-file-links {
   display: none;
 }
+
+/* Keep the default insight view compact, with detail only on demand. */
+.pd-insights {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.pd-insights .pd-intro {
+  grid-column: 1/-1;
+  margin: 0;
+}
+.pd-insights .pd-panel {
+  margin: 0;
+  padding: 20px;
+}
+.pd-insights .pd-section-title {
+  margin-bottom: 14px;
+}
+.pd-insights .pd-rows {
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+.pd-insights .pd-row-head {
+  padding: 10px 12px;
+}
+.pd-insights .pd-row-toggle strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.65;
+}
+.pd-insights .pd-row-content {
+  padding: 14px;
+}
+.pd-insights .pd-fields {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+.pd-insights .pd-row-actions {
+  gap: 0;
+}
+.pd-insights .pd-empty {
+  padding: 16px 12px;
+}
+.pd-material-name {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+}
+.pd-material-edit summary,
+.pd-upload-queue summary {
+  cursor: pointer;
+  color: #687d60;
+  font-size: 13px;
+  padding: 8px 0;
+}
+.pd-material-edit .pd-field {
+  margin: 12px 0;
+}
+.pd-upload-queue[open] summary {
+  margin-bottom: 12px;
+}
+@media (max-width: 1050px) {
+  .pd-insights {
+    grid-template-columns: 1fr;
+  }
+}

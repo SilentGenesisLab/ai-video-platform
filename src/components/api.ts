@@ -1,18 +1,45 @@
+export async function readApiResponse(response: Response) {
+  if (!response.headers.get("content-type")?.includes("json"))
+    throw Object.assign(
+      new Error(`服务暂时不可用，请稍后重试（HTTP ${response.status}）`),
+      { status: response.status },
+    );
+  try {
+    return await response.json();
+  } catch {
+    throw new Error("服务返回了异常响应，请稍后重试");
+  }
+}
 export async function api(path: string, method = "GET", body?: unknown) {
-  const response = await fetch("/api/v1" + path, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(method === "POST" ? { "Idempotency-Key": crypto.randomUUID() } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    cache: "no-store",
-  });
-  const data = await response.json();
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < (method === "GET" ? 3 : 1); attempt++) {
+    try {
+      response = await fetch("/api/v1" + path, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          ...(method === "POST"
+            ? { "Idempotency-Key": crypto.randomUUID() }
+            : {}),
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        cache: "no-store",
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch {
+      if (method !== "GET" || attempt === 2)
+        throw new Error("网络连接失败或请求超时，请稍后重试");
+    }
+    if (response && ![502, 503, 504].includes(response.status)) break;
+    if (method === "GET" && attempt < 2)
+      await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+  }
+  if (!response) throw new Error("网络连接失败，请稍后重试");
   if (response.status === 401) {
     window.location.href = "/login";
     throw new Error("请登录");
   }
+  const data = await readApiResponse(response);
   if (!response.ok)
     throw Object.assign(new Error(data.error?.message ?? "请求失败"), {
       status: response.status,
