@@ -1,0 +1,167 @@
+.admin-console .team-layout {
+  max-width: 1600px;
+}
+.admin-console aside button {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.admin-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.admin-filters,
+.admin-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #e0e6df;
+  border-radius: 18px;
+  margin: 24px 0;
+}
+.admin-filters {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.admin-form h3 {
+  margin: 0;
+}
+.admin-form .wide {
+  grid-column: 1/-1;
+}
+.admin-console label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #54615b;
+  font-size: 14px;
+}
+.admin-console label:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+}
+.admin-console input,
+.admin-console select,
+.admin-console textarea {
+  min-width: 0;
+  border: 1px solid #dce3db;
+  border-radius: 9px;
+  padding: 12px;
+  background: #fff;
+  color: #22312b;
+  font: inherit;
+}
+.admin-console input[type="checkbox"] {
+  width: auto;
+}
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 24px 0;
+}
+.admin-stats article {
+  border: 1px solid #e0e6df;
+  background: #fff;
+  border-radius: 16px;
+  padding: 22px;
+}
+.admin-stats small {
+  display: block;
+  color: #77847e;
+}
+.admin-stats strong {
+  display: block;
+  font-size: 34px;
+  font-weight: 600;
+  margin-top: 12px;
+}
+.admin-console small {
+  display: block;
+  margin-top: 5px;
+  color: #819087;
+  font-size: 12px;
+  word-break: break-all;
+}
+.admin-console h3 {
+  margin-top: 28px;
+}
+.admin-console .button {
+  margin-right: 7px;
+  gap: 6px;
+}
+.admin-bars article {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 2fr 150px;
+  gap: 16px;
+  align-items: center;
+  margin: 14px 0;
+}
+.admin-bars article div {
+  height: 10px;
+  border-radius: 8px;
+  background: #e9eee6;
+}
+.admin-bars i {
+  display: block;
+  height: 10px;
+  border-radius: 8px;
+  background: #8aab62;
+}
+.admin-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.admin-tags span {
+  padding: 8px 12px;
+  background: #eef3e7;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.admin-detail {
+  padding: 24px;
+  background: #f0f4ed;
+  border-radius: 18px;
+  margin-top: 24px;
+}
+.admin-console .team-table {
+  overflow: auto;
+}
+.admin-console .inline-form {
+  flex-wrap: wrap;
+}
+.admin-console .team-cards article {
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .admin-filters {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .admin-bars article {
+    grid-template-columns: 1fr;
+  }
+  .admin-console .admin-top {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 560px) {
+  .admin-form,
+  .admin-filters {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+  .admin-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .admin-stats strong {
+    font-size: 25px;
+  }
+  .admin-console .team-content {
+    padding: 20px 12px;
+  }
+}

@@ -1,8 +1,10 @@
+import { scheduleSchema, priceMultiplier } from "./price-schedule";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, systemDb, withTeam } from "./db";
 import { Actor, requirePlatform, requireScope } from "./auth";
 import { assert } from "./errors";
+import { lockPersonal, payerUser } from "./personal-credits";
 import { canonical, digest } from "./security";
 import { json, Tx, getResource } from "./services";
 import { batchInput } from "./contracts";
@@ -38,6 +40,9 @@ export async function saveRate(a: Actor, input: any) {
         .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
         .default({}),
       basis: z.string().min(1).max(1000),
+      billingSchedule: scheduleSchema.optional(),
+      sourceUrl: z.url().optional(),
+      checkedAt: z.coerce.date().optional(),
     })
     .parse(input);
   const channel = await db.channel.findUnique({
@@ -73,6 +78,7 @@ export async function saveRate(a: Actor, input: any) {
     const r = await tx.purchaseRate.create({
       data: {
         ...data,
+        billingSchedule: json(data.billingSchedule ?? {}),
         pricingParameters: json(data.pricingParameters),
         version: (last?.version ?? 0) + 1,
         createdBy: a.userId,
@@ -96,6 +102,7 @@ export async function rateLine(
   kind: string,
   parameters: any = {},
   tokenInput?: any,
+  priceTx?: Tx,
 ) {
   const resolution = String(
     parameters.resolution ??
@@ -126,13 +133,59 @@ export async function rateLine(
         Number(a.resolution === resolution) ||
       b.version - a.version,
   );
-  const rate = matches.find((r) => r.supplier === "");
-  assert(
-    rate,
-    422,
-    "该模型或规格尚未配置人民币采购价，暂不可生成",
-    "PRICE_UNAVAILABLE",
+  let rate = matches.find(
+    (r) => r.supplier === "" && r.sourceType !== "estimated",
   );
+  if (!rate) {
+    const setting = await systemDb.platformSetting.findUnique({
+      where: { id: "main" },
+    });
+    const fallback = setting?.fallbackCny ?? new D(1);
+    rate = matches.find(
+      (r) =>
+        r.supplier === "" &&
+        r.sourceType === "estimated" &&
+        r.rate.eq(fallback),
+    );
+    if (!rate) {
+      const createFallback = async (tx: Tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"price:" + channelId + model}))`;
+        const existing = await tx.purchaseRate.findFirst({
+          where: {
+            channelId,
+            model,
+            kind,
+            supplier: "",
+            resolution: "",
+            sourceType: "estimated",
+            rate: fallback,
+          },
+          orderBy: { version: "desc" },
+        });
+        if (existing) return existing;
+        const last = await tx.purchaseRate.findFirst({
+          where: { channelId, model, supplier: "", resolution: "" },
+          orderBy: { version: "desc" },
+        });
+        return tx.purchaseRate.create({
+          data: {
+            channelId,
+            model,
+            kind,
+            unit: "request",
+            rate: fallback,
+            version: (last?.version ?? 0) + 1,
+            basis: "临时估算：默认每次请求收费",
+            sourceType: "estimated",
+            createdBy: "system",
+          },
+        });
+      };
+      rate = priceTx
+        ? await createFallback(priceTx)
+        : await systemDb.$transaction(createFallback);
+    }
+  }
   let units = 1,
     cost = new D(rate.rate);
   if (rate.unit === "second") {
@@ -150,9 +203,12 @@ export async function rateLine(
     const serialized =
       JSON.stringify(tokenInput.messages ?? []) +
       JSON.stringify(tokenInput.tools ?? []);
-    const inputTokens = serialized.includes("image_url")
-      ? 1000000
-      : Buffer.byteLength(serialized, "utf8") + 4096;
+    const inputTokens =
+      kind === "video_understanding"
+        ? 262144
+        : serialized.includes("image_url")
+          ? 1000000
+          : Buffer.byteLength(serialized, "utf8") + 4096;
     assert(inputTokens <= 1000000, 422, "输入上下文过长");
     units = inputTokens;
     cost = D.max(rate.inputRate ?? 0, rate.cachedInputRate ?? 0)
@@ -162,6 +218,9 @@ export async function rateLine(
   }
   assert(Number.isFinite(units) && units > 0, 422, "无效计费数量");
   return {
+    submittedAt: new Date().toISOString(),
+    billingSchedule: rate.billingSchedule,
+    sourceType: rate.sourceType,
     rateId: rate.id,
     channelId,
     model,
@@ -225,6 +284,8 @@ export async function validateQuoteRates(tx: Tx, lines: any) {
       line.model,
       line.kind,
       line.parameters,
+      undefined,
+      tx,
     );
     assert(
       current.rateId === line.rateId,
@@ -247,9 +308,15 @@ export async function reserveUsage(
   line: any,
   requestHash: string,
 ) {
-  const w = await lockWallet(tx, a.teamId),
+  const userId = await payerUser(tx, a.userId, a.teamId);
+  const w = await lockPersonal(tx, userId),
     old = await tx.usageRecord.findUnique({ where: { invocationId } });
   if (old) {
+    assert(
+      old.payerKind !== "user" || old.payerUserId === userId,
+      403,
+      "调用不属于当前付款人",
+    );
     assert(old.requestHash === requestHash, 409, "同一调用标识不能更改输入");
     return old;
   }
@@ -257,14 +324,16 @@ export async function reserveUsage(
   assert(
     amount.greaterThanOrEqualTo(0) && w.balance.sub(w.frozen).gte(amount),
     402,
-    "团队可用积分不足",
+    "个人可用积分不足",
     "INSUFFICIENT_CREDITS",
   );
   const record = await tx.usageRecord.create({
     data: {
       teamId: a.teamId,
       invocationId,
-      actorId: a.userId,
+      actorId: userId,
+      payerKind: "user",
+      payerUserId: userId,
       kind: line.kind,
       model: line.model,
       channelId: line.channelId,
@@ -274,13 +343,14 @@ export async function reserveUsage(
       reserved: amount,
     },
   });
-  await tx.wallet.update({
+  await tx.userWallet.update({
     where: { id: w.id },
     data: { frozen: { increment: amount } },
   });
-  await tx.creditLedger.create({
+  await tx.personalCreditLedger.create({
     data: {
-      teamId: a.teamId,
+      userId,
+      sourceTeamId: a.teamId,
       eventKey: "reserve:" + record.id,
       actorId: a.userId,
       kind: "reserve",
@@ -300,7 +370,10 @@ export async function settleUsage(
   const found = await systemDb.usageRecord.findUniqueOrThrow({ where: { id } });
   return withTeam(found.teamId, () =>
     db.$transaction(async (tx) => {
-      const w = await lockWallet(tx, found.teamId),
+      const personal = found.payerKind === "user";
+      const w = personal
+          ? await lockPersonal(tx, found.payerUserId!)
+          : await lockWallet(tx, found.teamId),
         u = await tx.usageRecord.findUniqueOrThrow({ where: { id } });
       if (["settled", "released"].includes(u.status)) return u;
       if (cost === null)
@@ -326,30 +399,41 @@ export async function settleUsage(
             data: json(data),
           },
         });
-      await tx.wallet.update({
-        where: { id: w.id },
-        data: {
-          balance: { decrement: amount },
-          frozen: { decrement: u.reserved },
-        },
-      });
-      await tx.creditLedger.create({
-        data: {
-          teamId: u.teamId,
-          eventKey: "settle:" + id,
-          actorId: u.actorId,
-          kind: amount.eq(0) ? "release" : "charge",
-          amount: amount.neg(),
-          referenceId: id,
-          reason: amount.eq(0)
-            ? "确认未产生费用，释放冻结"
-            : type === "actual"
-              ? "按供应商账单结算"
+      const walletData = {
+        balance: { decrement: amount },
+        frozen: { decrement: u.reserved },
+      };
+      if (personal)
+        await tx.userWallet.update({ where: { id: w.id }, data: walletData });
+      else await tx.wallet.update({ where: { id: w.id }, data: walletData });
+      const ledgerData = {
+        eventKey: "settle:" + id,
+        actorId: u.actorId,
+        kind: amount.eq(0) ? "release" : "charge",
+        amount: amount.neg(),
+        referenceId: id,
+        reason: amount.eq(0)
+          ? "确认未产生费用，释放冻结"
+          : type === "actual"
+            ? "按供应商账单结算"
+            : type === "estimated"
+              ? "临时估算结算"
               : type === "manual"
                 ? "平台管理员对账"
                 : "按人民币采购价计算",
-        },
-      });
+      };
+      if (personal)
+        await tx.personalCreditLedger.create({
+          data: {
+            ...ledgerData,
+            userId: found.payerUserId!,
+            sourceTeamId: found.teamId,
+          },
+        });
+      else
+        await tx.creditLedger.create({
+          data: { ...ledgerData, teamId: found.teamId },
+        });
       return tx.usageRecord.update({
         where: { id },
         data: {
@@ -381,6 +465,11 @@ export async function usageFromResult(
     });
   if (!successful) return settleUsage(id, null);
   let r = await db.purchaseRate.findUniqueOrThrow({ where: { id: u.rateId } });
+  if (r.sourceType === "estimated")
+    return settleUsage(id, r.rate, "estimated", {
+      rateId: r.id,
+      basis: r.basis,
+    });
   const supplier = result.channel ?? result.actual_channel;
   if (supplier) {
     await db.usageRecord.update({
@@ -442,7 +531,12 @@ export async function usageFromResult(
       .add(new D(r.cachedInputRate ?? r.inputRate ?? 0).mul(cached))
       .add(new D(r.rate).mul(usage.completion_tokens))
       .div(1000000);
-    return settleUsage(id, cost, "calculated", { usage, rateId: r.id });
+    const multiplier = priceMultiplier(r.billingSchedule, u.createdAt);
+    return settleUsage(id, cost.mul(multiplier), "calculated", {
+      usage,
+      rateId: r.id,
+      multiplier,
+    });
   }
   return settleUsage(
     id,
@@ -461,10 +555,18 @@ export async function billingRoute(
   if (group === "billing") {
     requireScope(a, "read");
     if (id === "wallet" && method === "GET")
-      return db.wallet.findUniqueOrThrow({ where: { teamId: a.teamId } });
+      return systemDb.userWallet.upsert({
+        where: { userId: a.userId },
+        create: { userId: a.userId },
+        update: {},
+      });
     if (id === "usage" && method === "GET")
       return {
-        items: await db.usageRecord.findMany({
+        items: await systemDb.usageRecord.findMany({
+          where: {
+            payerUserId: a.userId,
+            ...(a.type === "agent" ? { teamId: a.teamId } : {}),
+          },
           orderBy: { createdAt: "desc" },
           take: 100,
           select: {
@@ -487,7 +589,11 @@ export async function billingRoute(
       };
     if (id === "ledger" && method === "GET")
       return {
-        items: await db.creditLedger.findMany({
+        items: await systemDb.personalCreditLedger.findMany({
+          where: {
+            userId: a.userId,
+            ...(a.type === "agent" ? { sourceTeamId: a.teamId } : {}),
+          },
           orderBy: { createdAt: "desc" },
           take: 100,
         }),

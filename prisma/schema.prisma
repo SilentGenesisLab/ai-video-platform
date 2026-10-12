@@ -358,6 +358,10 @@ model CreditLedger {
  @@index([teamId, createdAt])
 }
 model PurchaseRate {
+ billingSchedule Json @default("{}")
+ sourceType String @default("verified")
+ sourceUrl String?
+ checkedAt DateTime?
   pricingParameters Json @default("{}")
  id String @id @default(uuid())
  channelId String
@@ -390,6 +394,8 @@ model CreditQuote {
  @@index([teamId])
 }
 model UsageRecord {
+ payerKind String @default("team")
+ payerUserId String?
  id String @id @default(uuid())
  teamId String
  invocationId String @unique
@@ -413,4 +419,33 @@ model UsageRecord {
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  @@index([teamId, createdAt])
+}
+
+model UserWallet {
+ id String @id @default(uuid())
+ userId String @unique
+ balance Decimal @default(0) @db.Decimal(20,6)
+ frozen Decimal @default(0) @db.Decimal(20,6)
+ updatedAt DateTime @updatedAt
+}
+
+model PersonalCreditLedger {
+ id String @id @default(uuid())
+ userId String
+ sourceTeamId String?
+ eventKey String @unique
+ actorId String
+ kind String
+ amount Decimal @db.Decimal(20,6)
+ reason String
+ referenceId String?
+ createdAt DateTime @default(now())
+ @@index([userId, createdAt])
+}
+
+model PlatformSetting {
+ id String @id @default("main")
+ fallbackCny Decimal @default(1) @db.Decimal(20,8)
+ updatedBy String?
+ updatedAt DateTime @updatedAt
 }

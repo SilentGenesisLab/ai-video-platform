@@ -165,7 +165,10 @@ async function main() {
     kind: "image",
     entries: [{ channelId: channel.id, model: "test-image", prompt: "test" }],
   };
-  await request(a.cookie, "/billing/quotes", "POST", input, 422);
+  const fallback = (await request(a.cookie, "/billing/quotes", "POST", input))
+    .data;
+  assert.equal(fallback.amount, "100");
+  assert.equal(fallback.lines[0].sourceType, "estimated");
   const rate = await db.purchaseRate.create({
     data: {
       channelId: channel.id,
@@ -173,7 +176,7 @@ async function main() {
       kind: "image",
       unit: "image",
       rate: 2,
-      version: 1,
+      version: 2,
       basis: "本地测试采购",
       createdBy: a.data.userId,
     },
@@ -212,8 +215,8 @@ async function main() {
   });
   await settleUsage(use.id, 1.5);
   await settleUsage(use.id, 1.5);
-  const wallet = await db.wallet.findUniqueOrThrow({
-    where: { teamId: a.data.teamId },
+  const wallet = await db.userWallet.findUniqueOrThrow({
+    where: { userId: a.data.userId },
   });
   assert.equal(wallet.balance.toString(), "850");
   assert.equal(wallet.frozen.toString(), "0");
@@ -286,7 +289,9 @@ async function main() {
     ).data;
   assert.equal(
     (
-      await db.wallet.findUniqueOrThrow({ where: { teamId: a.data.teamId } })
+      await db.userWallet.findUniqueOrThrow({
+        where: { userId: a.data.userId },
+      })
     ).frozen.toString(),
     "0",
   );

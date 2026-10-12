@@ -16,7 +16,7 @@ export function openapi() {
   };
   const errors = {
     "402": {
-      description: "Insufficient team credits; pause and retain progress",
+      description: "Insufficient personal credits; pause and retain progress",
     },
     "429": { description: "Rate limit" },
     "401": { description: "Authentication required" },
@@ -378,14 +378,106 @@ export function openapi() {
     ["/teams/{id}/invitations/{invitationId}", "delete", "Revoke invitation"],
     ["/invitations/{id}", "get", "Inspect invitation token for matching phone"],
     ["/invitations/{id}", "post", "Accept invitation; grants no credits", {}],
-    ["/billing/wallet", "get", "Current team balance and frozen credits"],
-    ["/billing/usage", "get", "Team model usage and settlement basis"],
-    ["/billing/ledger", "get", "Immutable team credit ledger"],
+    [
+      "/billing/wallet",
+      "get",
+      "Current user global personal balance and frozen credits",
+    ],
+    ["/billing/usage", "get", "Current user model usage and settlement basis"],
+    ["/billing/ledger", "get", "Current user immutable personal credit ledger"],
     [
       "/billing/quotes",
       "post",
       "Get ten-minute generation quote; no paid call",
       z.toJSONSchema(batchInput),
+    ],
+    ["/teams/{id}/wallet", "get", "Team shared pool balance"],
+    ["/teams/{id}/usage", "get", "Team manager: usage within this team"],
+    [
+      "/teams/{id}/credit-allocations",
+      "get",
+      "Team manager: allocation ledger",
+    ],
+    [
+      "/teams/{id}/credit-allocations",
+      "post",
+      "Transfer pool credits to a member personal wallet",
+      obj(
+        {
+          userId: str,
+          amount: { type: "number", exclusiveMinimum: 0 },
+          reason: str,
+          eventKey: str,
+        },
+        ["userId", "amount", "reason", "eventKey"],
+      ),
+    ],
+    [
+      "/platform/users",
+      "get",
+      "Platform admin: paginated users; q/page query parameters",
+    ],
+    [
+      "/platform/users",
+      "post",
+      "Platform admin: create account",
+      obj(
+        {
+          name: str,
+          email: str,
+          password: str,
+          platformAdmin: { type: "boolean" },
+        },
+        ["name", "email", "password"],
+      ),
+    ],
+    [
+      "/platform/users/{id}",
+      "get",
+      "Platform admin: user wallet, teams and usage",
+    ],
+    [
+      "/platform/users/{id}",
+      "patch",
+      "Platform admin: edit name, status and admin role",
+      obj({
+        name: str,
+        active: { type: "boolean" },
+        platformAdmin: { type: "boolean" },
+      }),
+    ],
+    [
+      "/platform/users/{id}/reset-password",
+      "post",
+      "Platform admin: reset password and invalidate sessions",
+      obj({ password: str }, ["password"]),
+    ],
+    [
+      "/platform/dashboard",
+      "get",
+      "Platform admin: days/from/to/teamId/actorId/channelId/model filters",
+    ],
+    [
+      "/platform/settings",
+      "get",
+      "Platform admin: default estimated request price",
+    ],
+    [
+      "/platform/settings",
+      "patch",
+      "Platform admin: change fallback CNY",
+      obj({ fallbackCny: { type: "number", exclusiveMinimum: 0 } }, [
+        "fallbackCny",
+      ]),
+    ],
+    [
+      "/platform/personal-credits",
+      "post",
+      "Platform admin: adjust personal wallet with reason",
+      obj(
+        { userId: str, amount: { type: "number" }, reason: str, eventKey: str },
+        ["userId", "amount", "reason", "eventKey"],
+      ),
     ],
     ["/platform/rates", "get", "Platform admin: procurement price versions"],
     [
@@ -414,6 +506,13 @@ export function openapi() {
           resolution: str,
           supplier: str,
           pricingParameters: { type: "object", additionalProperties: true },
+          sourceUrl: str,
+          checkedAt: { type: "string", format: "date-time" },
+          billingSchedule: {
+            type: "object",
+            description:
+              "Asia/Shanghai peakWeekdays, peakHours in minutes, holidayDates and offPeakMultiplier",
+          },
           basis: str,
         },
         ["channelId", "model", "kind", "unit", "rate", "basis"],
@@ -495,7 +594,7 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.3.0",
+      version: "1.4.0",
       description:
         "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
     },

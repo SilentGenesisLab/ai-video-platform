@@ -2,7 +2,7 @@ import { meteredOperation } from "./metering";
 import { z } from "zod";
 import { db } from "./db";
 import { type Actor, requireScope } from "./auth";
-import { assert } from "./errors";
+import { assert, checkProviderResponse } from "./errors";
 import { decrypt, digest, canonical } from "./security";
 import { json, audit } from "./services";
 import { emitEvent } from "./events";
@@ -125,7 +125,7 @@ export async function webSearch(
               signal,
             },
           );
-          assert(r.ok, 502, `博查搜索失败 HTTP ${r.status}`);
+          checkProviderResponse(r, "博查搜索失败");
           const body = await r.json();
           assert(
             body.code === undefined || body.code === 200,

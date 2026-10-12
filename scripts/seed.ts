@@ -1,3 +1,4 @@
+import {seedOfficialPrices} from "../src/lib/pricing-presets";
 import "dotenv/config";
 import { db } from "../src/lib/db";
 import { encrypt } from "../src/lib/security";
@@ -79,6 +80,7 @@ async function main() {
         },
       });
   }
+  await seedOfficialPrices();
   console.log(
     "Admin and configured channels initialized. No existing credentials were overwritten.",
   );

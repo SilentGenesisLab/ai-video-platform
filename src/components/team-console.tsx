@@ -1,4 +1,6 @@
 "use client";
+import { AllocationForm } from "./credit-allocation";
+
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { Brand } from "./landing";
@@ -105,7 +107,6 @@ export default function TeamConsole() {
             ["team", "团队管理"],
             ["credits", "积分与用量"],
             ["account", "账号设置"],
-            ...(actor?.platformAdmin ? [["platform", "平台管理"]] : []),
           ].map(([id, label]) => (
             <button
               key={id}
@@ -115,8 +116,13 @@ export default function TeamConsole() {
               {label}
             </button>
           ))}
+          {actor?.platformAdmin && (
+            <a className="button" href="/admin">
+              管理后台
+            </a>
+          )}
           <div className="team-balance">
-            <small>当前团队可用积分</small>
+            <small>个人可用积分</small>
             <strong>
               {money(Number(wallet.balance) - Number(wallet.frozen))}
             </strong>
@@ -138,7 +144,8 @@ export default function TeamConsole() {
             <>
               <h2>你的团队</h2>
               <p className="muted">
-                切换团队后，资料、API Key 和积分都使用该团队的上下文。
+                切换团队改变资料和 API Key
+                上下文。个人积分余额全平台通用，团队公共池可以分配给成员。
               </p>
               <div className="team-cards">
                 {teams.map((t) => (
@@ -389,6 +396,24 @@ export default function TeamConsole() {
                 </details>
               )}
             </>
+          )}
+          {tab === "credits" && managed && (
+            <AllocationForm
+              teams={teams.filter((t) => t.id === actor?.teamId)}
+              busy={busy}
+              onSave={(d: any) =>
+                act(
+                  () =>
+                    api(`/teams/${d.teamId}/credit-allocations`, "POST", {
+                      userId: d.userId,
+                      amount: Number(d.amount),
+                      reason: d.reason,
+                      eventKey: crypto.randomUUID(),
+                    }),
+                  "积分已分配到个人余额",
+                )
+              }
+            />
           )}
           {tab === "credits" && (
             <>

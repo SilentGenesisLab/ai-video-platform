@@ -1,5 +1,6 @@
 import { db } from "./db";
-import { assert } from "./errors";
+import { assert, ProviderRejected, checkProviderResponse } from "./errors";
+import { payerUser } from "./personal-credits";
 import { canonical, digest, decrypt } from "./security";
 import { json } from "./services";
 import {
@@ -28,6 +29,14 @@ export async function meteredOperation<T>(
   const hash = digest(canonical({ channelId, kind, model, input }));
   let usage = await db.usageRecord.findUnique({ where: { invocationId } });
   if (usage) {
+    const owner = await db.$transaction((tx) =>
+      payerUser(tx, actor.userId, actor.teamId),
+    );
+    assert(
+      usage.payerKind !== "user" || usage.payerUserId === owner,
+      403,
+      "调用不属于当前付款人",
+    );
     assert(usage.requestHash === hash, 409, "调用标识对应的输入已改变");
     if (usage.response) return usage.response as T;
     assert(usage.status === "reserved", 409, "调用结果待确认，请先对账");
@@ -51,7 +60,14 @@ export async function meteredOperation<T>(
     await usageFromResult(usage.id, result, true);
     return result;
   } catch (e) {
-    await settleUsage(usage.id, null);
+    await settleUsage(
+      usage.id,
+      e instanceof ProviderRejected ? 0 : null,
+      "actual",
+      e instanceof ProviderRejected
+        ? { httpStatus: e.httpStatus, basis: "供应商拒绝接收请求" }
+        : {},
+    );
     throw e;
   }
 }
@@ -73,6 +89,14 @@ export async function meteredCall(
   const hash = digest(canonical({ channelId, kind, model, input, path }));
   let usage = await db.usageRecord.findUnique({ where: { invocationId } });
   if (usage) {
+    const owner = await db.$transaction((tx) =>
+      payerUser(tx, actor.userId, actor.teamId),
+    );
+    assert(
+      usage.payerKind !== "user" || usage.payerUserId === owner,
+      403,
+      "调用不属于当前付款人",
+    );
     assert(usage.requestHash === hash, 409, "调用标识对应的输入已改变");
     if (usage.response) return usage.response;
     assert(
@@ -101,13 +125,7 @@ export async function meteredCall(
       body: JSON.stringify(input),
       signal: AbortSignal.timeout(180000),
     });
-    if (!response.ok) {
-      // A provider rejection is not evidence of a refund. Keep the reservation for reconciliation.
-      await settleUsage(usage.id, null, "unknown", {
-        httpStatus: response.status,
-      });
-      throw new Error("模型调用失败 HTTP " + response.status);
-    }
+    checkProviderResponse(response, "模型调用失败");
     const result = await response.json();
     await db.usageRecord.update({
       where: { id: usage.id },
@@ -116,7 +134,14 @@ export async function meteredCall(
     await usageFromResult(usage.id, result, true);
     return result;
   } catch (error) {
-    await settleUsage(usage.id, null);
+    await settleUsage(
+      usage.id,
+      error instanceof ProviderRejected ? 0 : null,
+      "actual",
+      error instanceof ProviderRejected
+        ? { httpStatus: error.httpStatus, basis: "供应商拒绝接收请求" }
+        : {},
+    );
     throw error;
   }
 }

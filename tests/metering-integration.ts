@@ -122,7 +122,7 @@ async function main() {
   assert.equal(usage.charged?.toString(), "0.22");
   assert.equal(usage.costType, "calculated");
   await assert.rejects(
-    db.creditLedger.update({
+    db.personalCreditLedger.update({
       where: { eventKey: "settle:" + usage.id },
       data: { reason: "tamper" },
     }),
@@ -155,6 +155,21 @@ async function main() {
     "reconcile",
   );
   await settleUsage(unknown.id, 0, "manual");
+  global.fetch = async () => new Response("rejected", { status: 400 });
+  const rejected = "rejected:" + randomUUID();
+  await withTeam(a.teamId, async () => {
+    await assert.rejects(
+      meteredCall(a, rejected, channel.id, "text", "mock-text", input),
+    );
+    await assert.rejects(
+      meteredCall(a, rejected, channel.id, "text", "mock-text", input),
+    );
+  });
+  const rejectedUsage = await db.usageRecord.findUniqueOrThrow({
+    where: { invocationId: rejected },
+  });
+  assert.equal(rejectedUsage.status, "released");
+  assert.equal(rejectedUsage.charged?.toString(), "0");
   global.fetch = originalFetch;
   const p = await db.purchaseRate.create({
     data: {

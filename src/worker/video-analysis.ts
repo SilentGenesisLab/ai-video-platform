@@ -12,7 +12,7 @@ import { oss, objectKey, readUrl } from "../lib/storage";
 import { decrypt } from "../lib/security";
 import { json } from "../lib/services";
 import { withChannel } from "../lib/channel-call";
-import { assert } from "../lib/errors";
+import { assert, checkProviderResponse } from "../lib/errors";
 import { providerRequest } from "./provider";
 const exec = promisify(execFile);
 const terminal = ["completed", "failed", "submission_unknown"];
@@ -399,7 +399,7 @@ export async function analyzeVideo(jobId: string) {
             },
           );
           responded = true;
-          assert(r.ok, 502, `豆包视频理解失败 HTTP ${r.status}`);
+          checkProviderResponse(r, "豆包视频理解失败");
           return await r.json();
         },
       );

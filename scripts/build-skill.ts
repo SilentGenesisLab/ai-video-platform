@@ -22,7 +22,7 @@ async function main() {
   console.log(
     "Skill package built: " +
       Object.keys(files).length +
-      " files, version 1.3.0",
+      " files, version 1.4.0",
   );
 }
 void main();

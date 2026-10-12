@@ -1,3 +1,4 @@
+import { adminRoute } from "@/lib/platform-admin";
 import { meteredStream } from "@/lib/metered-stream";
 import { meteredCall } from "@/lib/metering";
 import { billingRoute } from "@/lib/billing";
@@ -93,7 +94,7 @@ async function handle(
     if (group === "openapi.json" && method === "GET") return ok(openapi());
     if (group === "health" && method === "GET") {
       await db.$queryRaw`SELECT 1`;
-      return ok({ status: "ok", version: "1.3.0" });
+      return ok({ status: "ok", version: "1.4.0" });
     }
     if (group === "auth") {
       const response = await accountRoute(req, id, body);
@@ -198,6 +199,8 @@ async function handle(
     }
     const actor = await authenticate(req);
     return await withTeam(actor.teamId, async () => {
+      const adminResult = await adminRoute(actor, parts, method, body, url.searchParams);
+      if (adminResult !== undefined) return ok(adminResult);
       const billed = await billingRoute(actor, parts, method, body);
       if (billed !== undefined) return ok(billed);
       if (["teams", "invitations"].includes(group)) {

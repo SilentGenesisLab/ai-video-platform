@@ -1,5 +1,6 @@
 import { db } from "./db";
-import { assert } from "./errors";
+import { assert, ProviderRejected, checkProviderResponse } from "./errors";
+import { payerUser } from "./personal-credits";
 import { canonical, decrypt, digest } from "./security";
 import { json } from "./services";
 import {
@@ -30,6 +31,14 @@ export async function meteredStream(
     "X-Accel-Buffering": "no",
   };
   if (usage) {
+    const owner = await db.$transaction((tx) =>
+      payerUser(tx, actor.userId, actor.teamId),
+    );
+    assert(
+      usage.payerKind !== "user" || usage.payerUserId === owner,
+      403,
+      "调用不属于当前付款人",
+    );
     assert(usage.requestHash === hash, 409, "调用标识对应的输入已改变");
     const saved = usage.response as any;
     if (saved?.sse) return new Response(saved.sse, { headers });
@@ -70,14 +79,18 @@ export async function meteredStream(
         signal: abort.signal,
       },
     );
-    assert(
-      upstream.ok && upstream.body,
-      502,
-      "模型流式调用失败 HTTP " + upstream.status,
-    );
+    checkProviderResponse(upstream, "模型流式调用失败");
+    assert(upstream.body, 502, "模型流式调用失败 HTTP " + upstream.status);
   } catch (e) {
     clearTimeout(timeout);
-    await settleUsage(usageId, null);
+    await settleUsage(
+      usageId,
+      e instanceof ProviderRejected ? 0 : null,
+      "actual",
+      e instanceof ProviderRejected
+        ? { httpStatus: e.httpStatus, basis: "供应商拒绝接收请求" }
+        : {},
+    );
     throw e;
   }
   let cancelled = false;

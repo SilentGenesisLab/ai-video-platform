@@ -14,18 +14,9 @@ export async function createTeam(
 ) {
   const t = await tx.team.create({ data: { name, createdBy: userId } });
   await tx.teamMember.create({ data: { teamId: t.id, userId, role: "owner" } });
-  await tx.wallet.create({ data: { teamId: t.id, balance: grant ? 1000 : 0 } });
-  if (grant)
-    await tx.creditLedger.create({
-      data: {
-        teamId: t.id,
-        eventKey: "signup:" + userId,
-        actorId: userId,
-        kind: "grant",
-        amount: 1000,
-        reason: "首次注册赠送",
-      },
-    });
+  await tx.wallet.create({ data: { teamId: t.id, balance: 0 } });
+  await tx.userWallet.upsert({where:{userId},create:{userId,balance:grant?1000:0},update:{}});
+  if(grant) await tx.personalCreditLedger.create({data:{userId,eventKey:"signup:"+userId,actorId:userId,kind:"grant",amount:1000,reason:"首次注册赠送"}});
   return t;
 }
 async function access(a: Actor, id: string, admin = false) {
