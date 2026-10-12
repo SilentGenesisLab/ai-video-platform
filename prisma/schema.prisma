@@ -222,6 +222,7 @@ model Conversation {
   runs AgentRun[]
 }
 model Message {
+  contextRefs Json @default("[]")
   attachmentIds String[] @default([])
   runId String?
   status String @default("completed")

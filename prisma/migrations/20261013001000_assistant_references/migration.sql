@@ -1,0 +1,1 @@
+ALTER TABLE "Message" ADD COLUMN "contextRefs" JSONB NOT NULL DEFAULT '[]';

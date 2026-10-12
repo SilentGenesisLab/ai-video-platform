@@ -5,7 +5,7 @@ import { personalRoute } from "@/lib/personal";
 import { billingRoute } from "@/lib/billing";
 import { accountRoute } from "@/lib/accounts";
 import { teamRoute } from "@/lib/teams";
-import { conversationSnapshot } from "@/lib/agent";
+import { conversationSnapshot, conversationMedia } from "@/lib/agent";
 import { conversationEvents } from "@/lib/events";
 import { recordRunEvent } from "@/lib/run-events";
 import { fileAccess, scopedAccess, scopedFilter } from "@/lib/access";
@@ -54,7 +54,12 @@ import {
   oss,
   validateMagic,
 } from "@/lib/storage";
-import { cancelJob, createBatch, decideBatch } from "@/lib/production";
+import {
+  cancelJob,
+  createBatch,
+  generateMedia,
+  decideBatch,
+} from "@/lib/production";
 import {
   claimRun,
   controlRun,
@@ -95,7 +100,7 @@ async function handle(
     if (group === "openapi.json" && method === "GET") return ok(openapi());
     if (group === "health" && method === "GET") {
       await db.$queryRaw`SELECT 1`;
-      return ok({ status: "ok", version: "1.4.1" });
+      return ok({ status: "ok", version: "1.4.2" });
     }
     if (group === "auth") {
       const response = await accountRoute(req, id, body);
@@ -531,6 +536,8 @@ async function handle(
           });
         }
       }
+      if (group === "tools" && id === "generate-media" && method === "POST")
+        return ok(await create((tx) => generateMedia(actor, body, tx)), 201);
       if (group === "production-batches") {
         requireScope(actor, "read");
         if (!id && method === "POST")
@@ -710,6 +717,8 @@ async function handle(
           });
         if (id) {
           await conversationAccess(actor, id);
+          if (method === "GET" && action === "media")
+            return ok(await conversationMedia(actor, id));
           if (method === "GET" && action === "events")
             return await conversationEvents(req, id);
           if (method === "POST" && action === "imports")

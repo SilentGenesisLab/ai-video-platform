@@ -32,6 +32,14 @@ type Binding = {
   teamId?: string;
   readOnly: boolean;
 };
+type Reference = {
+  resourceId: string;
+  title: string;
+  kind: string;
+  version: number;
+  productId?: string;
+  planId?: string;
+};
 const AssistantContext = createContext<any>(null);
 export const useAssistant = () => useContext(AssistantContext);
 export function AssistantProvider({
@@ -43,6 +51,21 @@ export function AssistantProvider({
 }) {
   const [open, setOpen] = useState(false),
     [used, setUsed] = useState(false);
+  const [referenceRequest, setReferenceRequest] = useState<
+    (Reference & { nonce: number }) | null
+  >(null);
+  const reference = useCallback((item: any) => {
+    setReferenceRequest({
+      resourceId: item.id,
+      title: item.title,
+      kind: item.kind,
+      version: item.version,
+      productId: item.kind === "product" ? item.id : item.productId,
+      planId: item.kind === "plan" ? item.id : item.planId,
+      nonce: Date.now(),
+    });
+    setOpen(true);
+  }, []);
   const [binding, setBinding] = useState<Binding>({ readOnly: true });
   const setContext = useCallback(
     (b: Binding) =>
@@ -57,13 +80,14 @@ export function AssistantProvider({
     if (open) setUsed(true);
   }, [open]);
   return (
-    <AssistantContext.Provider value={{ open, setOpen, setContext }}>
+    <AssistantContext.Provider value={{ open, setOpen, setContext, reference }}>
       {children}
       {used && (
         <AssistantPanel
           key={`${binding.userId ?? "loading"}:${binding.teamId ?? ""}`}
           open={open}
           close={() => setOpen(false)}
+          referenceRequest={referenceRequest}
           binding={binding}
           streamEnabled={streamEnabled}
         />
@@ -183,15 +207,44 @@ function AssistantPanel({
   close,
   binding,
   streamEnabled,
+  referenceRequest,
 }: {
   open: boolean;
   close: () => void;
   binding: Binding;
+  referenceRequest: (Reference & { nonce: number }) | null;
   streamEnabled: boolean;
 }) {
   const [id, setId] = useState(""),
     [conversations, setConversations] = useState<any[]>([]),
     [conversation, setConversation] = useState<any>(null);
+  const [refs, setRefs] = useState<Reference[]>([]),
+    [media, setMedia] = useState<any[]>([]);
+  const consumedReference = useRef(0);
+  const updateMedia = useCallback(
+    (items: any[]) =>
+      setMedia((old) => {
+        const files = new Map(
+          old
+            .flatMap((b) => b.jobs.flatMap((j: any) => j.files ?? []))
+            .map((f: any) => [f.id, f]),
+        );
+        return items.map((b) => ({
+          ...b,
+          jobs: b.jobs.map((j: any) => ({
+            ...j,
+            files: (j.files ?? []).map((f: any) => {
+              const known: any = files.get(f.id);
+              return known && Date.now() - known.urlCreatedAt < 50 * 60 * 1000
+                ? { ...f, url: known.url, urlCreatedAt: known.urlCreatedAt }
+                : { ...f, urlCreatedAt: Date.now() };
+            }),
+          })),
+        }));
+      }),
+    [],
+  );
+
   const [text, setText] = useState(""),
     [draftIds, setDraftIds] = useState<string[]>([]),
     [files, setFiles] = useState<Record<string, any>>({});
@@ -255,6 +308,7 @@ function AssistantPanel({
         const draft = JSON.parse(
           sessionStorage.getItem(`${storageKey}:draft:${next}`) || "{}",
         );
+        setRefs(draft.refs ?? []);
         setText(draft.text ?? "");
         setDraftIds(draft.ids ?? []);
         setImportJobs(draft.importJobs ?? []);
@@ -295,9 +349,50 @@ function AssistantPanel({
     if (hydrated)
       sessionStorage.setItem(
         `${storageKey}:draft:${id}`,
-        JSON.stringify({ text, ids: draftIds, importJobs }),
+        JSON.stringify({ text, ids: draftIds, importJobs, refs }),
       );
-  }, [text, draftIds, importJobs, id, storageKey, hydrated]);
+  }, [text, draftIds, importJobs, refs, id, storageKey, hydrated]);
+  useEffect(() => {
+    if (
+      !hydrated ||
+      !referenceRequest ||
+      consumedReference.current === referenceRequest.nonce
+    )
+      return;
+    consumedReference.current = referenceRequest.nonce;
+    const current = conversations.find((c) => c.id === currentId.current);
+    if (
+      current?.productId &&
+      current.productId !== referenceRequest.productId
+    ) {
+      selectConversation("");
+      setRefs([referenceRequest]);
+    } else
+      setRefs((old) =>
+        [
+          ...old.filter((r) => r.resourceId !== referenceRequest.resourceId),
+          referenceRequest,
+        ].slice(-10),
+      );
+    input.current?.focus();
+  }, [referenceRequest, hydrated, conversations, selectConversation]);
+  useEffect(() => {
+    setMedia([]);
+    if (!id) return;
+    let mounted = true;
+    const refresh = () =>
+      void api(`/conversations/${id}/media`)
+        .then((r) => {
+          if (mounted) updateMedia(r.items);
+        })
+        .catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 3000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [id, updateMedia]);
   useEffect(() => {
     if (!id) return;
     let mounted = true,
@@ -423,7 +518,14 @@ function AssistantPanel({
           }
           if (e.type === "tool_start" || e.type === "tool")
             setToolStatus(d.text);
-          if (e.type === "tool_end") setToolStatus("");
+          if (e.type === "tool_end") {
+            setToolStatus("");
+            void api(`/conversations/${id}/media`)
+              .then((r) => {
+                if (mounted) updateMedia(r.items);
+              })
+              .catch(() => {});
+          }
           if (e.type === "attachment") {
             if (d.fileId) void refreshFile(d.fileId);
             setToolStatus(d.status === "processing" ? d.text : "");
@@ -474,7 +576,7 @@ function AssistantPanel({
       stream?.close();
       if (polling) clearInterval(polling);
     };
-  }, [id, streamEnabled, refreshFile]);
+  }, [id, streamEnabled, refreshFile, updateMedia]);
   useEffect(() => {
     if (nearBottom.current && scroll.current) {
       scroll.current.scrollTop = scroll.current.scrollHeight;
@@ -523,8 +625,12 @@ function AssistantPanel({
     if (!inFlightConversation.current)
       inFlightConversation.current = api("/conversations", "POST", {
         title: text.slice(0, 30) || "附件分析",
-        ...(binding.productId ? { productId: binding.productId } : {}),
-        ...(binding.planId ? { planId: binding.planId } : {}),
+        ...((refs[0]?.productId ?? binding.productId)
+          ? { productId: refs[0]?.productId ?? binding.productId }
+          : {}),
+        ...((refs[0]?.planId ?? (refs.length ? undefined : binding.planId))
+          ? { planId: refs[0]?.planId ?? binding.planId }
+          : {}),
       })
         .then((c) => {
           currentId.current = c.id;
@@ -664,9 +770,11 @@ function AssistantPanel({
       const cid = await ensureConversation();
       await api("/conversations/" + cid + "/messages", "POST", {
         text,
+        referenceIds: refs.map((r) => r.resourceId),
         attachmentIds: draftIds,
       });
       setText("");
+      setRefs([]);
       setDraftIds([]);
       window.dispatchEvent(new Event("assistant:changed"));
     } catch (e) {
@@ -861,8 +969,77 @@ function AssistantPanel({
                   />
                 ),
             )}
+            {(m.contextRefs ?? []).map((r: Reference) => (
+              <div className="assistant-reference" key={r.resourceId}>
+                <FileText size={15} />
+                <span>
+                  引用：{r.title} · V{r.version}
+                </span>
+              </div>
+            ))}
             <Markdown>{m.text}</Markdown>
           </div>
+        ))}
+        {media.map((batch) => (
+          <section
+            className="assistant-media-card"
+            key={batch.id}
+            data-batch-id={batch.id}
+          >
+            <b>{batch.title}</b>
+            <small>
+              {batch.kind === "video" ? "视频" : "图片"} ·{" "}
+              {states[batch.status] ?? batch.status}
+            </small>
+            {batch.status === "pending_approval" && (
+              <a href="/studio/video">等待人工审批，前往视频制作</a>
+            )}
+            {(batch.jobs.length
+              ? batch.jobs
+              : Array.from({ length: batch.count }, (_, i) => ({
+                  id: batch.id + ":" + i,
+                  status: batch.status,
+                  files: [],
+                }))
+            ).map((job: any) => (
+              <div className="assistant-media-output" key={job.id}>
+                {job.files?.length ? (
+                  job.files.map((file: any) =>
+                    file.mime.startsWith("video/") ? (
+                      <video
+                        key={file.id}
+                        src={file.url}
+                        controls
+                        preload="metadata"
+                      />
+                    ) : (
+                      <a
+                        key={file.id}
+                        href={file.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <img src={file.url} alt={batch.title} />
+                      </a>
+                    ),
+                  )
+                ) : (
+                  <div className="assistant-media-placeholder">
+                    <LoaderCircle
+                      size={24}
+                      className={
+                        ["failed", "cancelled", "rejected"].includes(job.status)
+                          ? ""
+                          : "spin"
+                      }
+                    />
+                    <span>{states[job.status] ?? job.status}</span>
+                  </div>
+                )}
+                {job.error && <p className="error">{job.error}</p>}
+              </div>
+            ))}
+          </section>
         ))}
         {sources.length > 0 && (
           <details className="assistant-sources">
@@ -931,6 +1108,29 @@ function AssistantPanel({
           void upload(Array.from(e.dataTransfer.files));
         }}
       >
+        <div className="assistant-references" aria-label="编辑上下文">
+          {refs.map((r) => (
+            <div className="assistant-reference" key={r.resourceId}>
+              <FileText size={15} />
+              <span>
+                引用：{r.title} · V{r.version}
+              </span>
+              <button
+                aria-label={"移除引用 " + r.title}
+                onClick={() =>
+                  setRefs((old) =>
+                    old.filter((x) => x.resourceId !== r.resourceId),
+                  )
+                }
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          {refs.length > 0 && (
+            <small>发送后针对这些内容修改，保存前检查最新版本。</small>
+          )}
+        </div>
         <div className="assistant-drafts">
           {draftIds.map(
             (fid) =>

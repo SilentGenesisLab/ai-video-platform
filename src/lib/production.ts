@@ -1,4 +1,11 @@
-import { batchDigest, reserveUsage, validateQuoteRates } from "./billing";
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
+import {
+  batchDigest,
+  rateLine,
+  reserveUsage,
+  validateQuoteRates,
+} from "./billing";
 import { batchInput, GenerationEntry } from "./contracts";
 import { Actor, productAccess, requireHuman, requireScope } from "./auth";
 import { assert } from "./errors";
@@ -373,4 +380,89 @@ export async function refreshBatch(id: string | null) {
       ? "needs_attention"
       : "running";
   await db.productionBatch.update({ where: { id }, data: { status } });
+}
+
+// User intent authorizes image generation; video remains a human approval batch.
+export async function generateMedia(actor: Actor, input: unknown, tx: Tx) {
+  requireScope(actor, "generate");
+  const d = z
+    .object({
+      kind: z.enum(["image", "video"]),
+      productId: z.string().uuid(),
+      planId: z.string().uuid().optional(),
+      prompt: z.string().min(1).max(30000),
+      title: z.string().min(1).max(240).default("助手生成"),
+      count: z.number().int().min(1).max(20).default(1),
+      referenceFileIds: z.array(z.string().uuid()).max(30).default([]),
+      targetResourceId: z.string().uuid().optional(),
+      parameters: z.record(z.string(), z.unknown()).default({}),
+      sources: z
+        .array(
+          z.object({
+            resourceId: z.string().uuid(),
+            version: z.number().int().positive(),
+          }),
+        )
+        .default([]),
+    })
+    .parse(input);
+  const preferred = d.kind === "image" ? "gpt-image-2.5" : "seedance-2.5";
+  const channels = await tx.channel.findMany({
+    where: { provider: "aicentre", enabled: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const channel =
+    channels.find((c) => (c.models as any)[d.kind]?.includes(preferred)) ??
+    channels.find((c) => (c.models as any)[d.kind]?.length);
+  assert(channel, 503, "没有可用的媒体生成渠道，请管理员配置");
+  const models = (channel.models as any)[d.kind];
+  const model = models.includes(preferred) ? preferred : models[0];
+  const data = batchInput.parse({
+    title: d.title,
+    kind: d.kind,
+    productId: d.productId,
+    planId: d.planId,
+    entries: Array.from({ length: d.count }, () => ({
+      channelId: channel.id,
+      model,
+      prompt: d.prompt,
+      referenceFileIds: d.referenceFileIds,
+      targetResourceId: d.targetResourceId,
+      parameters: d.parameters,
+      sources: d.sources,
+    })),
+  });
+  const lines = [];
+  for (const entry of data.entries) {
+    const normalized = await validateEntry(
+      actor,
+      d.kind,
+      entry,
+      d.productId,
+      d.planId,
+      tx,
+    );
+    lines.push(
+      await rateLine(
+        channel.id,
+        model,
+        d.kind,
+        normalized.parameters,
+        undefined,
+        tx,
+      ),
+    );
+  }
+  const quote = await tx.creditQuote.create({
+    data: {
+      teamId: actor.teamId,
+      actorId: actor.userId,
+      digest: batchDigest(data),
+      input: json(data),
+      lines: json(lines),
+      amount: lines.reduce((n, l) => n.add(l.amount), new Prisma.Decimal(0)),
+      expiresAt: new Date(Date.now() + 600000),
+    },
+  });
+  return createBatch(actor, { ...data, quoteId: quote.id }, tx);
 }

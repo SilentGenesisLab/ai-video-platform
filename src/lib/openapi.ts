@@ -227,6 +227,41 @@ export function openapi() {
         },
       },
     ],
+    [
+      "/conversations/{id}/media",
+      "get",
+      "Conversation media batches and signed results",
+    ],
+    [
+      "/tools/generate-media",
+      "post",
+      "Direct media submission with automatic channel and quote",
+      {
+        type: "object",
+        required: ["kind", "productId", "prompt"],
+        properties: {
+          kind: { type: "string", enum: ["image", "video"] },
+          productId: { type: "string", format: "uuid" },
+          planId: { type: "string" },
+          prompt: { type: "string" },
+          title: { type: "string" },
+          count: { type: "integer", minimum: 1, maximum: 20 },
+          referenceFileIds: { type: "array", items: { type: "string" } },
+          targetResourceId: { type: "string" },
+          parameters: { type: "object", additionalProperties: true },
+          sources: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                resourceId: { type: "string" },
+                version: { type: "integer" },
+              },
+            },
+          },
+        },
+      },
+    ],
     ["/conversations/{id}", "get", "Messages and persisted execution status"],
     [
       "/conversations/{id}/messages",
@@ -236,6 +271,11 @@ export function openapi() {
         type: "object",
         properties: {
           text: { type: "string", maxLength: 30000 },
+          referenceIds: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string", format: "uuid" },
+          },
           attachmentIds: {
             type: "array",
             items: { type: "string" },
@@ -681,7 +721,7 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.4.1",
+      version: "1.4.2",
       description:
         "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
     },

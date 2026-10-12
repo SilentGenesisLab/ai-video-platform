@@ -1,4 +1,4 @@
-# Assistant API (1.4.1)
+# Assistant API (1.4.2)
 
 Authenticate with the private AIVIDEO_API_KEY. Never include credentials in URLs or logs.
 
@@ -23,3 +23,9 @@ POST /tools/web-search {"query":"<query>","freshness":"noLimit","count":10}, wit
 ## Team access and cost
 
 All attachments, analyses, streams and searches belong to the Key’s fixed team. Switching a browser team does not move an existing run. Chat, image/video understanding, speech recognition and search are free to users; supplier costs are tracked separately. Only image/video generation debits the initiating user or Key owner’s global personal wallet. New accounts receive 20000 credits once. Missing procurement prices use a clearly labeled default estimate. Insufficient credits only block billable generation. Interrupted/unknown submissions retain a reservation for reconciliation; never bypass this by automatically creating a new request. Completed invocation replays reuse the stored result without another provider call.
+
+## Selected resources and media
+
+POST `/conversations/{id}/messages` accepts `referenceIds` (at most 10 resource UUIDs). The server checks access and product scope and saves original content/version in `contextRefs`. Edit these selected resources, read their latest versions and PATCH with baseVersion; do not create copies unless asked.
+
+Use POST `/tools/generate-media` with kind (image/video), productId and prompt, optionally count, planId, parameters, referenceFileIds and targetResourceId. The server selects an enabled channel/model and records a quote. Explicit requests to generate images authorize immediate generation without further channel/price questions. Video remains pending human approval. Preserve Idempotency-Key on retries. Query `/conversations/{id}/media` for internal Agent batches, placeholders and signed result URLs; no generation is triggered by reads.

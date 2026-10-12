@@ -516,6 +516,7 @@ function ResourceEditor({
   notify,
   readOnly = false,
 }: any) {
+  const { reference: referenceAssistant } = useAssistant();
   const validation = useJsonValidation();
   const [title, setTitle] = useState(item?.title ?? ""),
     [pid, setPid] = useState(item?.productId ?? productId ?? ""),
@@ -547,7 +548,7 @@ function ResourceEditor({
         .then(setHistory)
         .catch((e) => notify(e.message));
   }, [item?.id, route]);
-  async function save() {
+  async function save(collaborate = false) {
     if (readOnly || validation.invalid) return;
     setBusy(true);
     try {
@@ -579,6 +580,7 @@ function ResourceEditor({
       );
       notify("已保存新版本", "success");
       onSaved(result);
+      if (collaborate) referenceAssistant(result);
     } catch (e) {
       notify((e as Error).message);
     } finally {
@@ -821,11 +823,21 @@ function ResourceEditor({
                     ? `保存为 V${item.version + 1}，历史版本保留`
                     : "保存后可继续与 Agent 协作"}
               </span>
+              {item && !readOnly && (
+                <Button
+                  onClick={() => {
+                    void save(true);
+                  }}
+                >
+                  <Sparkles size={15} />
+                  AI 协作
+                </Button>
+              )}
               <Button onClick={onClose}>取消</Button>
               {!readOnly && (
                 <Button
                   primary
-                  onClick={save}
+                  onClick={() => void save()}
                   disabled={busy || !title.trim() || validation.invalid}
                 >
                   {busy ? (
@@ -1529,6 +1541,7 @@ export default function Workspace() {
     open: chat,
     setOpen: setChat,
     setContext: setAssistantContext,
+    reference: referenceAssistant,
   } = useAssistant();
   const pathname = usePathname(),
     router = useRouter(),
@@ -1914,7 +1927,11 @@ export default function Workspace() {
                 readOnly={!canWrite}
                 notify={notify}
                 onDirtyChange={onProductDirty}
-                onChat={() => setChat(true)}
+                onChat={() =>
+                  void api("/products/" + productDetailId)
+                    .then(referenceAssistant)
+                    .catch((e) => notify(e.message))
+                }
                 onSaved={load}
               />
             )
@@ -2719,13 +2736,19 @@ export default function Workspace() {
                             <button
                               onClick={() => {
                                 setProductId(item.productId ?? item.id);
-                                setChat(true);
+                                referenceAssistant(item);
                               }}
                             >
                               <Sparkles size={15} />
                               AI 协作
                             </button>
                           </>
+                        )}
+                        {(route === "storyboards" || route === "products") && (
+                          <button onClick={() => referenceAssistant(item)}>
+                            <Sparkles size={15} />
+                            AI 协作
+                          </button>
                         )}
                       </footer>
                     </article>

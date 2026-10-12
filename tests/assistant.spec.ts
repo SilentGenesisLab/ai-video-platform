@@ -319,3 +319,119 @@ test("ASSISTANT-05 Shift+Enter and IME preserve draft without sending", async ({
   await expect(composer).toHaveValue("第一行\na");
   expect(sends).toBe(0);
 });
+
+test("ASSISTANT-06 AI collaboration adds removable persistent resource context", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.APP_URL?.includes("127.0.0.1"),
+    "Local resource fixtures only",
+  );
+  await login(page);
+  const product = await api(page, "/products", {
+    title: "引用验收 " + randomUUID(),
+    content: { description: "引用的产品说明" },
+  });
+  await page.reload();
+  const card = page
+    .locator(".resource-card")
+    .filter({ hasText: product.title });
+  await card.getByRole("button", { name: "AI 协作", exact: true }).click();
+  const context = page.getByLabel("编辑上下文");
+  await expect(context).toContainText(product.title);
+  await page.getByLabel("发送给创作搭档").fill("修改这个产品描述");
+  await page.reload();
+  await page.getByRole("button", { name: "创作搭档", exact: true }).click();
+  await expect(context).toContainText(product.title);
+  let sent: any;
+  await page.route("**/api/v1/conversations/*/messages", async (route) => {
+    sent = route.request().postDataJSON();
+    await route.fulfill({ json: { id: "mock-run", status: "queued" } });
+  });
+  await page.getByLabel("发送给创作搭档").press("Enter");
+  await expect.poll(() => sent?.referenceIds).toEqual([product.id]);
+  await expect(context.locator(".assistant-reference")).toHaveCount(0);
+  await card.getByRole("button", { name: "AI 协作", exact: true }).click();
+  await expect(context).toContainText(product.title);
+  await context.getByLabel("移除引用 " + product.title).click();
+  await expect(context.locator(".assistant-reference")).toHaveCount(0);
+});
+
+test("ASSISTANT-07 media placeholders update to results without resubmission", async ({
+  page,
+}) => {
+  await login(page);
+  const c = await api(page, "/conversations", {
+    title: "卡片验收 " + randomUUID(),
+  });
+  let completed = false,
+    reads = 0;
+  const png =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jTH4AAAAASUVORK5CYII=";
+  await page.route(`**/api/v1/conversations/${c.id}/media`, async (route) => {
+    reads++;
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: "image-fixture",
+            title: "生成的图片",
+            kind: "image",
+            count: 1,
+            status: completed ? "succeeded" : "queued",
+            jobs: [
+              {
+                id: "image-job",
+                status: completed ? "succeeded" : "queued",
+                files: completed
+                  ? [{ id: "result", mime: "image/png", url: png }]
+                  : [],
+              },
+            ],
+          },
+          {
+            id: "video-fixture",
+            title: "待审批视频",
+            kind: "video",
+            count: 2,
+            status: "pending_approval",
+            jobs: [],
+          },
+        ],
+      },
+    });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "创作搭档", exact: true }).click();
+  const image = page.locator('[data-batch-id="image-fixture"]');
+  await expect(image.locator(".assistant-media-placeholder")).toBeVisible();
+  await expect(page.locator('[data-batch-id="video-fixture"]')).toContainText(
+    "等待人工审批",
+  );
+  completed = true;
+  await expect(image.getByRole("img", { name: "生成的图片" })).toBeVisible({
+    timeout: 10000,
+  });
+  await expect(image.locator(".assistant-media-placeholder")).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: "创作搭档", exact: true }).click();
+  await expect(image.getByRole("img", { name: "生成的图片" })).toBeVisible();
+  expect(reads).toBeGreaterThan(1);
+});
+
+
+test("ASSISTANT-08 live Agent edits selected concept instead of creating a copy",async({page})=>{
+  test.skip(process.env.E2E_LIVE_AGENT !== "1" || !process.env.APP_URL?.includes("127.0.0.1"),"Explicit local real model editing test");
+  await login(page);
+  const p=await api(page,"/products",{title:"编辑验收 "+randomUUID(),content:{}});
+  const ref=await api(page,"/concepts",{title:"引用目标",productId:p.id,content:{hook:"原钩子",idea:"保留的一句话创意",structure:"保留的结构",emotion:"保留的情绪",selfReview:"保留的评审"}});
+  const c=await api(page,"/conversations",{title:"定向修改验收",productId:p.id});
+  await api(page,`/conversations/${c.id}/messages`,{text:"请使用API修改这次引用的创意：仅把 hook 字段改成 精准修改后的钩子，严格保留名称、其他字段和产品归属，通过PATCH保存新版本，不新建任何创意，不生成媒体，不搜索。",referenceIds:[ref.id]});
+  await expect.poll(async()=> (await api(page,"/concepts/"+ref.id)).content.hook,{timeout:120000,intervals:[1000,2000]}).toBe("精准修改后的钩子");
+  const latest=await api(page,"/concepts/"+ref.id);
+  expect(latest.version).toBe(ref.version+1);
+  expect(latest.content.idea).toBe(ref.content.idea);
+  expect(latest.title).toBe(ref.title);
+  const list=await api(page,"/concepts?productId="+p.id);
+  expect(list.items).toHaveLength(1);
+});

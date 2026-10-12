@@ -1,13 +1,70 @@
 import { z } from "zod";
 import { db } from "./db";
 import { Actor, agentScopes, productAccess, requireScope, roles } from "./auth";
-import { audit, getResource, Tx } from "./services";
+import { audit, getResource, json, Tx } from "./services";
 import { assert } from "./errors";
 import { decrypt, digest, encrypt, randomToken } from "./security";
 import { conversationAccess, fileAccess } from "./access";
 export { conversationAccess } from "./access";
 import { appendEvent } from "./events";
+import { readUrl } from "./storage";
 import { prepareAttachments } from "./attachments";
+
+export async function conversationMedia(actor: Actor, id: string, tx: Tx = db) {
+  await conversationAccess(actor, id, tx);
+  const runs = await tx.agentRun.findMany({
+    where: { conversationId: id },
+    select: { id: true },
+  });
+  const batches = await tx.productionBatch.findMany({
+    where: {
+      createdBy: { in: runs.map((r) => r.id) },
+      ...(actor.productIds.length
+        ? { productId: { in: actor.productIds } }
+        : {}),
+    },
+    include: { jobs: { orderBy: { createdAt: "asc" } } },
+    orderBy: { createdAt: "asc" },
+    take: 100,
+  });
+  return {
+    items: await Promise.all(
+      batches.map(async (b) => ({
+        id: b.id,
+        title: b.title,
+        kind: b.kind,
+        status:
+          b.jobs.length && b.jobs.every((j) => j.status === "succeeded")
+            ? "succeeded"
+            : b.status,
+        productId: b.productId,
+        count: (b.snapshot as any).entries.length,
+        jobs: await Promise.all(
+          b.jobs.map(async (j) => ({
+            id: j.id,
+            status: j.status,
+            error: j.error,
+            files: await Promise.all(
+              ((j.result as any)?.files ?? []).map(async (f: any) => {
+                const file = await tx.fileObject.findFirst({
+                  where: {
+                    id: f.fileId,
+                    teamId: actor.teamId,
+                    productId: b.productId,
+                    status: "ready",
+                  },
+                });
+                return file
+                  ? { id: file.id, mime: file.mime, url: readUrl(file.key) }
+                  : null;
+              }),
+            ).then((files) => files.filter(Boolean)),
+          })),
+        ),
+      })),
+    ),
+  };
+}
 export async function conversationSnapshot(actor: Actor, id: string) {
   return db.$transaction(async (tx) => {
     await conversationAccess(actor, id, tx);
@@ -75,10 +132,11 @@ export async function sendMessage(
   tx: Tx,
 ) {
   requireScope(actor, "write");
-  const { text, attachmentIds } = z
+  const { text, attachmentIds, referenceIds } = z
     .object({
       text: z.string().max(30000).default(""),
       attachmentIds: z.array(z.string()).max(10).default([]),
+      referenceIds: z.array(z.string().uuid()).max(10).default([]),
     })
     .parse(input);
   assert(text.trim() || attachmentIds.length, 422, "请输入内容或添加附件");
@@ -101,9 +159,35 @@ export async function sendMessage(
     );
     assert(file.status === "ready", 409, "附件尚未上传完成");
   }
+  const contextRefs = [];
+  for (const resourceId of [...new Set(referenceIds)]) {
+    const resource = await getResource(actor, resourceId, tx);
+    const productId =
+      resource.kind === "product" ? resource.id : resource.productId;
+    assert(
+      !conversation.productId || productId === conversation.productId,
+      422,
+      "引用与会话产品不匹配，请新建对应产品会话",
+    );
+    contextRefs.push({
+      resourceId,
+      version: resource.version,
+      title: resource.title,
+      kind: resource.kind,
+      productId,
+      planId: resource.planId,
+      content: resource.content,
+    });
+  }
   const inputJobIds = await prepareAttachments(actor, attachmentIds, text, tx);
   const message = await tx.message.create({
-    data: { conversationId: id, role: "user", text, attachmentIds },
+    data: {
+      conversationId: id,
+      role: "user",
+      text,
+      attachmentIds,
+      contextRefs: json(contextRefs),
+    },
   });
   await tx.conversation.update({
     where: { id },
@@ -126,6 +210,10 @@ export async function sendMessage(
         ? [conversation.productId]
         : actor.productIds,
     },
+  });
+  await tx.message.update({
+    where: { id: message.id },
+    data: { runId: run.id },
   });
   await appendEvent(tx, id, "message", message, run.id);
   await appendEvent(tx, id, "run", { id: run.id, status: run.status }, run.id);
