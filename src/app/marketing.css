@@ -46,6 +46,11 @@
   font-style: normal;
   color: #8db55d;
 }
+.ff-brand-image {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: 10px;
+}
 .ff-nav {
   height: 86px;
   max-width: 1440px;
