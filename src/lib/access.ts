@@ -1,4 +1,4 @@
-import { requirePermission } from "./permissions";
+import { requirePermission, hasPermission } from "./permissions";
 import { db } from "./db";
 import { type Actor, productAccess, requireScope } from "./auth";
 import { assert } from "./errors";
@@ -51,6 +51,9 @@ export async function scopedFilter(actor: Actor) {
   const conversations = await db.conversation.findMany({
     where: {
       ownerId: actor.userId,
+      ...(actor.type === "agent" && !hasPermission(actor, "chat.read")
+        ? { id: { in: [] } }
+        : {}),
       ...(actor.productScopeMode === "selected" || actor.productIds.length
         ? { productId: { in: actor.productIds } }
         : {}),
