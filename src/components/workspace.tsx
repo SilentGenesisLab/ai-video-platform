@@ -59,14 +59,14 @@ const navigation = [
     name: "产品管理",
     icon: Boxes,
     sub: "产品是创作的起点",
-    description: "把产品资料整理清楚，让每一个创意都有据可依。",
+    description: "整理 TVC 产品需求与 Brief，让每一个广告创意都有据可依。",
   },
   {
     id: "creative",
     name: "创意策划",
     icon: Lightbulb,
     sub: "让好想法进入下一幕",
-    description: "从创意发散到工业分镜，在这里打磨你的故事。",
+    description: "从广告创意、TVC 策划到工业分镜，在这里打磨你的故事。",
   },
   {
     id: "assets",
@@ -80,7 +80,7 @@ const navigation = [
     name: "视频制作",
     icon: Clapperboard,
     sub: "把想法变成画面",
-    description: "管理制作脚本、审批与生成结果，追溯每一次尝试。",
+    description: "从制作脚本与视频片段，到 TVC 成片交付，追溯每一次制作。",
   },
   {
     id: "channels",
@@ -1826,7 +1826,7 @@ export default function Workspace() {
           <span className="studio-avatar">S</span>
           <div>
             <b>{actor?.teamName ?? "团队"}</b>
-            <small>创作工作室</small>
+            <small>TVC 制作工作室</small>
           </div>
           <span className="workspace-pill">TEAM</span>
         </div>

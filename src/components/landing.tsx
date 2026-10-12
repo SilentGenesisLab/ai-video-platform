@@ -21,7 +21,13 @@ import {
 export function Brand() {
   return (
     <Link href="/" className="ff-brand">
-      <img src="/brand/frameflow-mark.png" width={38} height={38} alt="" className="ff-brand-image" />
+      <img
+        src="/brand/frameflow-mark.png"
+        width={38}
+        height={38}
+        alt=""
+        className="ff-brand-image"
+      />
       <span>
         frameflow<i>.</i>
       </span>
@@ -61,7 +67,7 @@ export default function Landing() {
     fetch("/api/v1/auth/me").then((r) => setSigned(r.ok));
   }, []);
   const target = signed ? "/studio/products" : "/register";
-  const cta = signed ? "进入工作台" : "开始你的创作";
+  const cta = signed ? "进入工作台" : "开始制作 TVC";
   return (
     <main className="ff-site">
       <header className="ff-nav">
@@ -100,17 +106,17 @@ export default function Landing() {
         <div className="hero-copy">
           <span className="ff-kicker">
             <span />
-            THE SPACE BETWEEN IDEA & FILM
+            TVC CREATIVE PRODUCTION · 广告片制作
           </span>
           <h1>
-            让好创意，
+            从产品需求，
             <br />
-            成为完整的<span>视频。</span>
+            到完整<span>广告片。</span>
           </h1>
           <p>
-            从产品 Brief 到最后一个镜头。
+            把产品需求变成创意，把每一个镜头连成故事。
             <br />
-            让你、团队与 Agent，在同一间创作空间里接力。
+            Brief、策划、分镜、资产与视频，在同一间制作工作室里接力。
           </p>
           <div className="hero-actions">
             <Link className="ff-button" href={target}>
@@ -118,29 +124,57 @@ export default function Landing() {
               <ArrowUpRight size={19} />
             </Link>
             <a className="ff-text-link" href="#workflow">
-              看看如何制作 <ArrowDown size={16} />
+              探索制作流程 <ArrowDown size={16} />
             </a>
           </div>
           <span className="trial-note">
-            首次手机注册赠送 1000 积分 · 团队共享
+            首次手机注册赠送 1000 积分 · 个人额度全平台通用
           </span>
+          <div className="hero-production-path" aria-label="TVC 制作流程">
+            {[
+              "需求 Brief",
+              "创意策划",
+              "工业分镜",
+              "视觉资产",
+              "视频片段",
+              "成片交付",
+            ].map((step, i) => (
+              <span key={step}>
+                <small>0{i + 1}</small>
+                {step}
+              </span>
+            ))}
+          </div>
         </div>
         <div className="hero-art">
           <ProductScene />
           <div className="art-label">
-            <span>01 — CREATIVE DIRECTION</span>
+            <span>FRAMEFLOW / TVC CONCEPT</span>
             <b>把早晨，握在手里。</b>
             <small>虚构产品 · 原创视觉示例</small>
           </div>
+          <span className="hero-format">
+            30s <i />
+            16:9
+          </span>
           <div className="floating-note">
             <span className="agent-avatar">
               <Sparkles size={17} />
             </span>
             <div>
-              <b>Agent 已整理创意方向</b>
-              <small>等待你的下一步打磨</small>
+              <b>一个 Brief，一整条制作流程</b>
+              <small>人定方向 · Agent 接力</small>
             </div>
             <Check size={17} />
+          </div>
+          <div className="hero-film-strip" aria-hidden="true">
+            <span>01 / MORNING</span>
+            <div>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <i key={i} />
+              ))}
+            </div>
+            <span>00:00 / 00:30</span>
           </div>
         </div>
       </section>
@@ -151,7 +185,7 @@ export default function Landing() {
             <i />
             <i />
           </span>
-          <small>FRAMEFLOW / MORNING PROJECT</small>
+          <small>FRAMEFLOW / MORNING TVC PROJECT</small>
           <span className="demo-pill">演示界面</span>
         </div>
         <div className="showcase-body">
@@ -167,7 +201,7 @@ export default function Landing() {
           <div className="showcase-main">
             <div className="showcase-heading">
               <div>
-                <small>森野随行杯 / 策划案 01</small>
+                <small>森野随行杯 / 30 秒 TVC 策划案</small>
                 <h3>一个属于自己的早晨</h3>
               </div>
               <span className="demo-pill">工业分镜 · v3</span>
@@ -210,15 +244,15 @@ export default function Landing() {
           <div>
             <span className="ff-kicker">01 / A CONNECTED WORKFLOW</span>
             <h2>
-              每一个想法，
+              一份产品需求，
               <br />
-              都有通往成片的路径。
+              六步走向完整 TVC。
             </h2>
           </div>
           <p>
             用「森野随行杯」这个虚构产品，
             <br />
-            走一遍从资料到交付的完整制作流程。
+            演示一支 30 秒 TVC 从需求到交付的制作流程。
           </p>
         </div>
         <div className="workflow-grid">
@@ -290,7 +324,7 @@ export default function Landing() {
               [
                 Users,
                 "一个团队，同一份上下文",
-                "成员角色、团队资料和共享积分放在一起管理。不同团队的制作空间独立。",
+                "成员角色、团队资料和积分分配放在一起管理。不同团队的制作空间独立。",
               ],
             ].map(([Icon, title, description]: any) => (
               <article key={title}>
@@ -382,6 +416,10 @@ export default function Landing() {
         <div className="faq-list">
           {[
             [
+              "Frameflow 用来制作什么？",
+              "Frameflow 是面向品牌和产品的 TVC 广告片制作工作室，连接产品需求、Brief、创意策划、工业分镜、视觉资产与视频片段。剪辑完成的成片可上传并关联来源，保留每一步制作记录。",
+            ],
+            [
               "积分怎么算？",
               "1 元对应 100 积分。优先按供应商实际费用或核实采购价结算；缺价时默认每请求 1 元，明确标记临时估算。提交前报价，完成后结算。",
             ],
@@ -419,7 +457,7 @@ export default function Landing() {
       <section className="ff-final">
         <span className="ff-kicker">YOUR NEXT IDEA STARTS HERE</span>
         <h2>
-          下一支好视频，
+          你的下一支 TVC，
           <br />
           从这里开始。
         </h2>
@@ -433,13 +471,25 @@ export default function Landing() {
       </section>
       <footer className="ff-footer">
         <Brand />
-        <span>从一个想法，到每一个镜头。</span>
+        <span>TVC 制作 · 从产品需求到完整广告片。</span>
         <div>
           <Link href="/skills/ai-video-platform/SKILL.md">Skill</Link>
           <Link href="/api/v1/openapi.json">接口文档</Link>
           <a href="#faq">常见问题</a>
-          <a href={accountLinks.agreement} target="_blank" rel="noopener noreferrer">产品用户协议</a>
-          <a href={accountLinks.privacy} target="_blank" rel="noopener noreferrer">隐私政策</a>
+          <a
+            href={accountLinks.agreement}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            产品用户协议
+          </a>
+          <a
+            href={accountLinks.privacy}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            隐私政策
+          </a>
         </div>
         <small>© {new Date().getFullYear()} Frameflow</small>
       </footer>

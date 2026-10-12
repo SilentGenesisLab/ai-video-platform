@@ -135,16 +135,16 @@ export default function AuthForm({
       <section className="auth-visual">
         <Brand />
         <div>
-          <span className="ff-kicker">YOUR CREATIVE OPERATING SYSTEM</span>
+          <span className="ff-kicker">FRAMEFLOW / TVC PRODUCTION STUDIO</span>
           <h1>
-            每一个想法，
+            从产品需求，
             <br />
-            都值得一个
+            到一支
             <br />
-            <em>完整的故事。</em>
+            <em>完整广告片。</em>
           </h1>
           <p>
-            连接产品、创意与制作。
+            连接需求、创意、分镜与制作。
             <br />
             让人与 Agent 在同一个空间协作。
           </p>
@@ -153,7 +153,7 @@ export default function AuthForm({
           <ProductScene />
           <span>原创概念示例 / MORNING</span>
         </div>
-        <small>从一个想法，到每一个镜头。</small>
+        <small>从第一份 Brief，到最后一个镜头。</small>
       </section>
       <section className="auth-content">
         <Link href="/" className="back-home">
