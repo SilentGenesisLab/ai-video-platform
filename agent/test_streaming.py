@@ -54,3 +54,20 @@ def test_missing_done_is_an_interrupted_attempt():
 def test_stop_cancels_stream_consumption():
     with pytest.raises(asyncio.CancelledError):
         run_stream([{'content': 'A' * 300}, {'content': 'must not arrive'}], stop=True)
+
+
+def test_pricing_error_body_survives_stream_close():
+    class ErrorBody(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'{"error":{"message":"PRICE_UNAVAILABLE"}}'
+
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(422, stream=ErrorBody())
+        )) as client:
+            with pytest.raises(httpx.HTTPStatusError) as raised:
+                await stream_completion(client, 'https://fixture.test/model', {}, {},
+                                        lambda _: None, asyncio.Event())
+            body = await raised.value.response.aread()
+            assert json.loads(body)['error']['message'] == 'PRICE_UNAVAILABLE'
+    asyncio.run(check())

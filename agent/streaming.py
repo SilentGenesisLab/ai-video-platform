@@ -12,6 +12,10 @@ async def stream_completion(client, url, headers, payload, emit, stopped):
         last_flush = time.monotonic()
         finished = False
         async with client.stream("POST", url, headers=headers, json={**payload, "stream": True}, timeout=180) as response:
+            if response.is_error:
+                # Cache the error body before the streaming context closes so the
+                # caller can report pricing/credit failures and pause safely.
+                await response.aread()
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if stopped.is_set():
