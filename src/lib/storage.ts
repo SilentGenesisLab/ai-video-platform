@@ -59,6 +59,7 @@ export const allowedMime = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 export const uploadSchema = z.object({
+  parsePolicy: z.enum(["auto", "skip"]).default("auto"),
   productId: z.string(),
   name: z.string().min(1).max(200),
   mime: z.enum(allowedMime as [string, ...string[]]),
@@ -70,11 +71,16 @@ export const uploadSchema = z.object({
 });
 export async function initiateUpload(actor: Actor, input: unknown, tx: Tx) {
   requireScope(actor, "write");
-  const data = uploadSchema.parse(input);
+  const { parsePolicy, ...data } = uploadSchema.parse(input);
   const product = await getResource(actor, data.productId, tx);
   assert(product.kind === "product", 422, "需要产品");
   const file = await tx.fileObject.create({
-    data: { ...data, key: objectKey(data.name), createdBy: actor.id },
+    data: {
+      ...data,
+      key: objectKey(data.name),
+      createdBy: actor.id,
+      metadata: json({ parsePolicy }),
+    },
   });
   await audit(tx, actor, "file.upload_started", file.id, file.productId);
   return {
@@ -107,9 +113,16 @@ export async function completeUpload(actor: Actor, id: string) {
   return db.$transaction(async (tx) => {
     const changed = await tx.fileObject.updateMany({
       where: { id, status: "pending" },
-      data: { status: "ready", sha256: digest(buffer), key: finalKey },
+      data: {
+        status: "ready",
+        sha256: digest(buffer),
+        key: finalKey,
+        ...((file.metadata as any)?.parsePolicy === "skip"
+          ? { parseStatus: "skipped" }
+          : {}),
+      },
     });
-    if (changed.count) {
+    if (changed.count && (file.metadata as any)?.parsePolicy !== "skip") {
       const job = await tx.job.create({
         data: {
           kind: "parse",
@@ -118,8 +131,9 @@ export async function completeUpload(actor: Actor, id: string) {
         },
       });
       await tx.outbox.create({ data: { jobId: job.id, phase: "parse" } });
-      await audit(tx, actor, "file.upload_completed", id, file.productId);
     }
+    if (changed.count)
+      await audit(tx, actor, "file.upload_completed", id, file.productId);
     return tx.fileObject.findUniqueOrThrow({ where: { id } });
   });
 }

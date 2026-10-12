@@ -78,7 +78,7 @@ async function handle(
     if (group === "openapi.json" && method === "GET") return ok(openapi());
     if (group === "health" && method === "GET") {
       await db.$queryRaw`SELECT 1`;
-      return ok({ status: "ok", version: "1.1.0" });
+      return ok({ status: "ok", version: "1.2.0" });
     }
     if (group === "auth") {
       const response = await accountRoute(req, id, body);
@@ -281,7 +281,7 @@ async function handle(
           const r = await getResource(actor, id);
           assert(r.kind === kind, 404, "对象类型不匹配");
           if (method === "GET" && action === "context" && kind === "product")
-            return ok(await context(actor, id));
+            return ok(await context(actor, id, url.searchParams));
           if (method === "GET" && !action)
             return ok(await resourceDetail(actor, id));
           if (method === "PATCH" && !action)
@@ -448,18 +448,39 @@ async function handle(
         } else if (method === "GET") {
           const productId = url.searchParams.get("productId");
           if (productId) productAccess(actor, productId);
-          return ok({
-            items: await db.fileObject.findMany({
-              where: {
-                ...(productId
-                  ? { productId }
-                  : actor.productIds.length
-                    ? { productId: { in: actor.productIds } }
-                    : {}),
-              },
-              orderBy: { createdAt: "desc" },
-              take: 100,
+          const page = Math.max(
+              1,
+              Math.floor(Number(url.searchParams.get("page")) || 1),
+            ),
+            limit = Math.min(
+              100,
+              Math.max(
+                1,
+                Math.floor(Number(url.searchParams.get("limit")) || 100),
+              ),
+            );
+          const where = {
+            ...(productId
+              ? { productId }
+              : actor.productIds.length
+                ? { productId: { in: actor.productIds } }
+                : {}),
+          };
+          const [items, total] = await Promise.all([
+            db.fileObject.findMany({
+              where,
+              orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+              skip: (page - 1) * limit,
+              take: limit,
             }),
+            db.fileObject.count({ where }),
+          ]);
+          return ok({
+            items,
+            total,
+            page,
+            limit,
+            hasMore: page * limit < total,
           });
         }
       }

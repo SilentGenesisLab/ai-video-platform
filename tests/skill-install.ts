@@ -54,7 +54,7 @@ async function main() {
       join(root, "ai-video-platform/SKILL.md"),
       "utf8",
     );
-    assert(entry.includes("version: 1.0.0"));
+    assert(entry.includes("version: 1.2.0"));
     assert(entry.includes("auth/me"));
     await writeFile(
       join(root, "private.env"),

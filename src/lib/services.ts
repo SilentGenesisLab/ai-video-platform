@@ -1,3 +1,4 @@
+import { adaptProductContent, normalizeProductUpdate } from "./product-content";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "./db";
@@ -60,7 +61,9 @@ export async function idempotent(
     "创建操作必须提供 8–200 字符 Idempotency-Key",
   );
   const requestHash = digest(canonical(request)),
-    where = { teamId_actorId_key: { teamId: actor.teamId, actorId: actor.id, key } };
+    where = {
+      teamId_actorId_key: { teamId: actor.teamId, actorId: actor.id, key },
+    };
   const previous = await db.idempotency.findUnique({ where });
   const replay = (response: any) => {
     if (response?.kind === "product") productAccess(actor, response.id);
@@ -178,9 +181,27 @@ export async function saveResource(
   id?: string,
 ) {
   requireScope(actor, "write");
-  const parsed = resourceInput.parse(input),
-    content = contentSchemas[kind].parse(parsed.content) as any;
+  const parsed = resourceInput.parse(input);
   const old = id ? await getResource(actor, id, tx) : null;
+  const productFiles =
+    kind === "product"
+      ? await tx.fileObject.findMany({
+          where: {
+            productId: id ?? "",
+            id: {
+              in: fileReferences({
+                ...((old?.content as any) ?? {}),
+                ...parsed.content,
+              }),
+            },
+          },
+          select: { id: true, mime: true, name: true },
+        })
+      : [];
+  const content =
+    kind === "product"
+      ? normalizeProductUpdate(old?.content, parsed.content, productFiles)
+      : (contentSchemas[kind].parse(parsed.content) as any);
   if (old) assert(old.kind === kind, 404, "类型不匹配");
   if (old)
     assert(
@@ -283,6 +304,18 @@ export async function saveResource(
       422,
       "成片必须引用视频文件",
     );
+  if (kind === "product") {
+    for (const reference of content.referenceVideos ?? []) {
+      if (reference.type === "file")
+        assert(
+          checkedFiles
+            .find((f) => f.id === reference.fileId)
+            ?.mime.startsWith("video/"),
+          422,
+          "参考视频必须引用视频文件",
+        );
+    }
+  }
   const imageIds =
     kind === "storyboard"
       ? content.shots.flatMap((s: any) =>
@@ -439,29 +472,95 @@ export async function resourceDetail(actor: Actor, id: string) {
   const staleSources = sourceRefs.filter(
     (s) => latest.find((r) => r.id === s.resourceId)?.version !== s.version,
   );
-  return { ...resource, revisions, staleSources };
+  const files =
+    resource.kind === "product"
+      ? await db.fileObject.findMany({
+          where: {
+            productId: resource.id,
+            id: { in: fileReferences(resource.content) },
+          },
+          select: { id: true, mime: true, name: true },
+        })
+      : [];
+  return {
+    ...resource,
+    content:
+      resource.kind === "product"
+        ? adaptProductContent(resource.content, files)
+        : resource.content,
+    revisions,
+    staleSources,
+  };
 }
-export async function context(actor: Actor, id: string) {
+export async function context(
+  actor: Actor,
+  id: string,
+  params = new URLSearchParams(),
+) {
   const product = await getResource(actor, id);
   assert(product.kind === "product", 422, "需要产品 ID");
-  const resources = await db.resource.findMany({
-    where: { productId: id },
-    orderBy: { updatedAt: "desc" },
-    take: 100,
+  const page = (key: string) =>
+    Math.max(1, Math.floor(Number(params.get(key)) || 1));
+  const filesPage = page("filesPage"),
+    resourcesPage = page("resourcesPage");
+  const limit = Math.min(
+    100,
+    Math.max(1, Math.floor(Number(params.get("limit")) || 100)),
+  );
+  const [resources, resourcesTotal, files, filesTotal, referenced] =
+    await Promise.all([
+      db.resource.findMany({
+        where: { productId: id },
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        skip: (resourcesPage - 1) * limit,
+        take: limit,
+      }),
+      db.resource.count({ where: { productId: id } }),
+      db.fileObject.findMany({
+        where: { productId: id, status: "ready" },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        skip: (filesPage - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          mime: true,
+          parseStatus: true,
+          extractedText: true,
+          parseError: true,
+        },
+      }),
+      db.fileObject.count({ where: { productId: id, status: "ready" } }),
+      db.fileObject.findMany({
+        where: { productId: id, id: { in: fileReferences(product.content) } },
+        select: { id: true, name: true, mime: true },
+      }),
+    ]);
+  const pagination = (page: number, total: number, key: string) => ({
+    page,
+    limit,
+    total,
+    hasMore: page * limit < total,
+    next:
+      page * limit < total
+        ? `/api/v1/products/${id}/context?filesPage=${filesPage}&resourcesPage=${resourcesPage}&limit=${limit}`.replace(
+            `${key}=${page}`,
+            `${key}=${page + 1}`,
+          )
+        : null,
   });
-  const files = await db.fileObject.findMany({
-    where: { productId: id, status: "ready" },
-    select: {
-      id: true,
-      name: true,
-      mime: true,
-      parseStatus: true,
-      extractedText: true,
-      parseError: true,
+  return {
+    product: {
+      ...product,
+      content: adaptProductContent(product.content, referenced),
     },
-    take: 100,
-  });
-  return { product, resources, files };
+    resources,
+    files,
+    pagination: {
+      files: pagination(filesPage, filesTotal, "filesPage"),
+      resources: pagination(resourcesPage, resourcesTotal, "resourcesPage"),
+    },
+  };
 }
 const keySelect = {
   id: true,
@@ -516,7 +615,9 @@ export async function saveKey(
     "不能为其他成员创建 Key",
   );
   const owner = await tx.user.findUnique({ where: { id: ownerId } });
-  const membership = await tx.teamMember.findUnique({ where: { teamId_userId: { teamId: actor.teamId, userId: ownerId } } });
+  const membership = await tx.teamMember.findUnique({
+    where: { teamId_userId: { teamId: actor.teamId, userId: ownerId } },
+  });
   assert(owner?.active && membership?.active, 422, "成员不可用");
   assert(
     data.scopes.every(
@@ -598,8 +699,8 @@ export async function keyAction(actor: Actor, id: string, action: string) {
     );
     await audit(tx, actor, "key.instructions_copied", id);
     return {
-      instructions: `请安装并使用 AI Video Platform Skill（版本 1.1.0）。\n平台：${base}\n安装入口：${base}/skills/ai-video-platform/SKILL.md\n安装包：${base}/skills/ai-video-platform.zip\n\n将以下配置保存到你环境的私有凭据配置中，不打印或提交到仓库：\nAIVIDEO_BASE_URL=${base}\nAIVIDEO_API_KEY=${decrypt(key.ciphertext)}\n\n先读取安装入口，安装到当前 Agent 支持的 Skill 目录。使用 GET /api/v1/auth/me 验证身份与权限；验证阶段不要创建数据或调用生成。后续按我的具体任务操作平台。\n权限：${key.scopes.join(", ")}\n固定团队：${actor.teamName} (${actor.teamId})\n产品范围：${key.productIds.length ? key.productIds.join(", ") : "全部产品"}\n视频生成必须在平台人工审批。`,
-      skillVersion: "1.1.0",
+      instructions: `请安装并使用 AI Video Platform Skill（版本 1.2.0）。\n平台：${base}\n安装入口：${base}/skills/ai-video-platform/SKILL.md\n安装包：${base}/skills/ai-video-platform.zip\n\n将以下配置保存到你环境的私有凭据配置中，不打印或提交到仓库：\nAIVIDEO_BASE_URL=${base}\nAIVIDEO_API_KEY=${decrypt(key.ciphertext)}\n\n先读取安装入口，安装到当前 Agent 支持的 Skill 目录。使用 GET /api/v1/auth/me 验证身份与权限；验证阶段不要创建数据或调用生成。后续按我的具体任务操作平台。\n权限：${key.scopes.join(", ")}\n固定团队：${actor.teamName} (${actor.teamId})\n产品范围：${key.productIds.length ? key.productIds.join(", ") : "全部产品"}\n视频生成必须在平台人工审批。`,
+      skillVersion: "1.2.0",
     };
   });
 }

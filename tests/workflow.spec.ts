@@ -28,8 +28,9 @@ async function login(
   password = process.env.ADMIN_PASSWORD!,
 ) {
   await page.goto("/login");
+  await page.getByRole("tab", {name:"邮箱密码"}).click();
   await page.getByLabel("邮箱", { exact: true }).fill(email);
-  await page.getByLabel("密码", { exact: true }).fill(password);
+  await page.locator('input[name="password"]').fill(password);
   await page.getByRole("button", { name: "进入工作台" }).click();
   await expect(page.getByRole("heading", { name: "产品管理." })).toBeVisible();
   await expect(page.locator(".loading")).toHaveCount(0);
@@ -60,6 +61,11 @@ async function seed(page: Page, route = "products", extra: any = {}) {
   return r;
 }
 async function edit(page: Page, item: any, section = "products") {
+  if (section === "products") {
+    await page.goto(`/studio/products/${item.id}`);
+    await expect(page.getByLabel("产品名称", { exact: true })).toBeVisible();
+    return page.locator(".product-detail");
+  }
   await page.goto(`/studio/${section}?id=${item.id}`);
   await expect(page.getByRole("dialog")).toBeVisible();
   return page.getByRole("dialog");
@@ -70,21 +76,41 @@ async function save(page: Page, route: string, existing = false) {
       r.url().includes(`/api/v1/${route}`) &&
       r.request().method() === (existing ? "PATCH" : "POST"),
   );
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: existing ? "保存修订" : "保存", exact: true })
-    .click();
+  if (route === "products")
+    await page.getByRole("button", { name: "保存产品", exact: true }).click();
+  else
+    await page
+      .getByRole("dialog")
+      .getByRole("button", {
+        name: existing ? "保存修订" : "保存",
+        exact: true,
+      })
+      .click();
   const r = await response;
   expect(r.ok(), `save ${route}: ${r.status()}`).toBeTruthy();
   const body = await r.json();
   if (!existing) resources.push({ route, id: body.id });
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  if (route === "products") {
+    await expect(
+      page.getByText("所有修改已保存", { exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "全部产品", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "产品管理." }),
+    ).toBeVisible();
+  }
   return body;
 }
 async function createUI(page: Page, button: string, title: string) {
   await page.getByRole("button", { name: button, exact: true }).click();
-  const d = page.getByRole("dialog");
-  await d.getByLabel("名称", { exact: true }).fill(title);
+  const d =
+    button === "新建产品"
+      ? page.locator(".product-detail")
+      : page.getByRole("dialog");
+  await d
+    .getByLabel(button === "新建产品" ? "产品名称" : "名称", { exact: true })
+    .fill(title);
   return d;
 }
 
@@ -168,33 +194,35 @@ test("AUTH-02 email case and surrounding whitespace are normalized", async ({
   expect(r.status()).toBe(200);
 });
 
-test("FORM-01 typing multiline selling points preserves Enter", async ({
+test("FORM-01 structured selling points preserve order and multiline details", async ({
   page,
 }) => {
-  const d = await createUI(page, "新建产品", prefix + " multi-line");
-  const field = d.getByLabel("核心卖点（每行一条）");
-  await field.pressSequentially("first");
-  await field.press("Enter");
-  await field.pressSequentially("second");
-  await expect(field).toHaveValue("first\nsecond");
+  const d = await createUI(page, "新建产品", prefix + " structured");
+  await d.getByRole("button", { name: "产品洞察", exact: true }).click();
+  await d.getByRole("button", { name: "添加卖点", exact: true }).click();
+  await d.getByLabel("卖点标题", { exact: true }).fill("first");
+  await d.getByLabel("用户收益", { exact: true }).fill("line one\nline two");
+  await d.getByRole("button", { name: "添加卖点", exact: true }).click();
+  await d.getByLabel("卖点标题", { exact: true }).nth(1).fill("second");
+  await d.getByRole("button", { name: "上移卖点", exact: true }).nth(1).click();
   const product = await save(page, "products");
-  expect(product.content.sellingPoints).toEqual(["first", "second"]);
+  expect(product.content.sellingPoints).toEqual(["second", "first"]);
+  expect(product.content.sellingPointItems[1].benefit).toBe(
+    "line one\nline two",
+  );
 });
 
-test("FORM-02 invalid JSON cannot silently save old data", async ({ page }) => {
-  const d = await createUI(page, "新建产品", prefix + " invalid-json");
-  await d.getByLabel("事实与假设").fill("[{broken");
-  await expect(d.getByText("JSON 格式不完整，请修正后保存")).toBeVisible();
-  await expect(
-    d.getByRole("button", { name: "保存", exact: true }),
-  ).toBeDisabled();
-  await d
-    .getByLabel("事实与假设")
-    .fill('[{"text":"Verified fact","kind":"fact"}]');
-  await expect(
-    d.getByRole("button", { name: "保存", exact: true }),
-  ).toBeEnabled();
-  await save(page, "products");
+test("FORM-02 fact editor distinguishes fact and hypothesis without JSON", async ({
+  page,
+}) => {
+  const d = await createUI(page, "新建产品", prefix + " evidence");
+  await d.getByRole("button", { name: "产品洞察", exact: true }).click();
+  await d.getByRole("button", { name: "添加事实或假设", exact: true }).click();
+  await d.getByLabel("内容", { exact: true }).fill("Verified fact");
+  await d.getByLabel("证据状态", { exact: true }).selectOption("fact");
+  const product = await save(page, "products");
+  expect(product.content.facts[0].kind).toBe("fact");
+  expect(product.content.facts[0].id).toBeTruthy();
 });
 
 test("BOARD-01 deleting then adding a shot never duplicates its number", async ({
@@ -220,31 +248,32 @@ test("BOARD-01 deleting then adding a shot never duplicates its number", async (
   await save(page, "storyboards");
 });
 
-test("PRODUCT-01 edit history, version conflict and archive", async ({
+test("PRODUCT-01 product history, version conflict and archive", async ({
   page,
-  context,
 }) => {
   const p = await seed(page);
   const d = await edit(page, p);
-  await d.getByLabel("产品描述").fill("human draft retained on conflict");
+  await d
+    .getByLabel("产品描述", { exact: true })
+    .fill("human draft retained on conflict");
   await data(page, `/products/${p.id}`, "PATCH", {
     title: p.title,
     baseVersion: p.version,
-    content: { ...p.content, brief: "Changed by another editor" },
+    content: { brief: "Changed by another editor" },
   });
-  await d.getByRole("button", { name: "保存修订", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText(/版本|冲突|内容已更新/);
-  await expect(d.getByLabel("产品描述")).toHaveValue(
+  await d.getByRole("button", { name: "保存产品", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(d.getByLabel("产品描述", { exact: true })).toHaveValue(
     "human draft retained on conflict",
   );
-  await page.reload();
-  await page.getByRole("button", { name: /版本历史/ }).click();
-  await expect(page.locator(".history details")).toHaveCount(2);
-  await page.getByRole("button", { name: "内容编辑", exact: true }).click();
-  await page
-    .getByRole("dialog")
-    .getByLabel("状态", { exact: true })
-    .selectOption("archived");
+  page.once("dialog", (dialog) => dialog.accept());
+  await d
+    .getByRole("button", { name: "放弃草稿并重新加载", exact: true })
+    .click();
+  await d.getByRole("button", { name: "历史版本", exact: true }).click();
+  await expect(page.locator(".pd-history-revision")).toHaveCount(2);
+  await page.getByRole("button", { name: "关闭历史版本" }).click();
+  await d.getByLabel("产品状态", { exact: true }).selectOption("archived");
   await save(page, "products", true);
   await page.getByLabel("已归档", { exact: true }).check();
   await page.getByLabel("搜索", { exact: true }).fill(p.title);
@@ -258,8 +287,9 @@ test("FLOW-01 product to creative, plan, storyboard, asset, script and video rej
 }) => {
   let d = await createUI(page, "新建产品", prefix + " workflow");
   await d.getByLabel("产品描述").fill("A test desk lamp; claims are fixtures");
+  await d.getByRole("button", { name: "产品 Brief", exact: true }).click();
   await d
-    .getByLabel("产品 Brief · Markdown")
+    .getByLabel("产品 Brief Markdown")
     .fill("# Brief\nMake a 5 second demonstration.");
   const p = await save(page, "products");
   await page
@@ -367,15 +397,17 @@ test("FILE-01 upload text, extraction, file ID and product version", async ({
     .filter({ hasText: p.title })
     .getByRole("button", { name: "产品资料" })
     .click();
-  const d = page.getByRole("dialog");
-  await d.locator('input[type="file"]').setInputFiles({
+  await page.getByRole("button", { name: "产品素材", exact: true }).click();
+  const d = page.locator(".product-detail");
+  await d.getByLabel("上传产品素材文件").setInputFiles({
     name: "brief-e2e.txt",
     mimeType: "text/plain",
     buffer: Buffer.from("Verified E2E product source text"),
   });
   await expect(
-    d.getByRole("heading", { name: "brief-e2e.txt", exact: true }),
+    d.getByText("已上传，请保存产品关联", { exact: true }),
   ).toBeVisible();
+  await save(page, "products", true);
   const latest = await data(page, `/products/${p.id}`);
   expect(latest.version).toBe(p.version + 1);
   expect(latest.content.fileIds).toHaveLength(1);
@@ -418,17 +450,16 @@ test("FILE-02 silent video upload, playback, delivery and incomplete lineage", a
     .filter({ hasText: p.title })
     .getByRole("button", { name: "产品资料" })
     .click();
-  await page
-    .getByRole("dialog")
-    .locator('input[type="file"]')
-    .setInputFiles({
-      name: "silent-e2e.mp4",
-      mimeType: "video/mp4",
-      buffer: readFileSync(".runtime/e2e-silent.mp4"),
-    });
+  await page.getByRole("button", { name: "产品素材", exact: true }).click();
+  await page.getByLabel("上传产品素材文件").setInputFiles({
+    name: "silent-e2e.mp4",
+    mimeType: "video/mp4",
+    buffer: readFileSync(".runtime/e2e-silent.mp4"),
+  });
   await expect(
-    page.getByRole("heading", { name: "silent-e2e.mp4", exact: true }),
+    page.getByText("已上传，请保存产品关联", { exact: true }),
   ).toBeVisible();
+  await save(page, "products", true);
   const latest = await data(page, `/products/${p.id}`);
   const fileId = latest.content.fileIds[0];
   await expect
@@ -436,10 +467,6 @@ test("FILE-02 silent video upload, playback, delivery and incomplete lineage", a
       timeout: 30000,
     })
     .toBe("completed");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "关闭", exact: true })
-    .click();
   await navigate(page, "视频制作", "成片交付");
   const d = await createUI(page, "新建成片", prefix + " delivery");
   await d.getByLabel("所属产品").selectOption(p.id);
@@ -564,7 +591,7 @@ test("AUTH-03 password visibility, environment hint and network failure recovery
   page,
 }) => {
   await page.getByRole("button", { name: "退出登录" }).click();
-  const password = page.getByLabel("密码", { exact: true });
+  const password = page.locator('input[name="password"]');
   await page.getByRole("button", { name: "显示密码", exact: true }).click();
   await expect(password).toHaveAttribute("type", "text");
   await page.getByRole("button", { name: "隐藏密码", exact: true }).click();
@@ -724,8 +751,8 @@ test("ROLE-01 viewer reads resources without edit or generation controls", async
     ).toHaveCount(0);
     const d = await edit(viewer, p);
     await expect(d.getByRole("button", { name: /^保存/ })).toHaveCount(0);
-    await expect(d.getByLabel("产品描述")).toBeDisabled();
-    await d.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(d.getByLabel("产品描述")).toHaveAttribute("readonly", "");
+    await d.getByRole("button", { name: "全部产品", exact: true }).click();
     await navigate(viewer, "资产制作");
     await expect(
       viewer.getByRole("button", { name: "提交制作", exact: true }),

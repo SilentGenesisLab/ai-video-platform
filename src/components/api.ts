@@ -13,7 +13,11 @@ export async function api(path: string, method = "GET", body?: unknown) {
     window.location.href = "/login";
     throw new Error("请登录");
   }
-  if (!response.ok) throw new Error(data.error?.message ?? "请求失败");
+  if (!response.ok)
+    throw Object.assign(new Error(data.error?.message ?? "请求失败"), {
+      status: response.status,
+      code: data.error?.code,
+    });
   return data;
 }
 export type Item = {

@@ -2,7 +2,7 @@
 name: ai-video-platform
 description: Manage products, briefs, creative batches, treatments, industrial storyboards, assets and production jobs in AI Video Platform. Use when the user asks to create or iterate video projects on this platform, upload materials, submit media generation, or inspect production results and provenance.
 metadata:
-  version: 1.1.0
+  version: 1.2.0
 ---
 
 # AI Video Platform
@@ -11,7 +11,7 @@ metadata:
 
 If this document was supplied as a web link, download the sibling package at `/skills/ai-video-platform.zip` from the same platform origin. Inspect the package and extract the `ai-video-platform` folder to this Agent's supported skill directory. For Codex use `$CODEX_HOME/skills` or `~/.codex/skills`; for other hosts use their documented skill directory. Do not change unrelated Agent configuration.
 
-Use the platform address and selected API key from the user's private connection instructions. Store them in private local configuration or the running environment as `AIVIDEO_BASE_URL` and `AIVIDEO_API_KEY`; do not put credentials in this skill or print them. Package version: **1.1.0**.
+Use the platform address and selected API key from the user's private connection instructions. Store them in private local configuration or the running environment as `AIVIDEO_BASE_URL` and `AIVIDEO_API_KEY`; do not put credentials in this skill or print them. Package version: **1.2.0**.
 
 Read `references/api.md` for API conventions. Authenticate requests with `Authorization: Bearer <AIVIDEO_API_KEY>`. Call `GET /api/v1/auth/me` first and report the effective scopes and product boundary, without echoing the credential. Connection validation does not create products or trigger generation.
 
@@ -27,6 +27,10 @@ Read `references/api.md` for API conventions. Authenticate requests with `Author
 - Poll job status at reasonable intervals. `submission_unknown` requires reconciliation; never blindly repeat a paid provider submission. `transfer_failed` can use `retry-transfer` without regeneration.
 - Report stored object IDs, versions, actual job states, and links. A submitted task is not a completed video. Preserve source links when uploading finished edits.
 
+## Product insight workspace
+
+Read [references/product-insights.md](references/product-insights.md) when organizing product evidence, audience segments, Briefs, materials or reference videos. Use structured fields, preserve omitted fields, and follow context/file pagination. Product reference videos are manually annotated: upload with `parsePolicy: "skip"`; do not start model analysis unless separately requested.
+
 ## Schema and discovery
 
 Fetch `${AIVIDEO_BASE_URL}/api/v1/openapi.json` for the installed API contract. Read only relevant operations and content schemas. Public documentation contains no access credentials or business records.
@@ -35,7 +39,7 @@ Use product-scoped API queries. A restricted key cannot create a new product or 
 
 For installation or API updates, compare this package's version with the platform's published version. Keep local credentials outside the skill directory so package updates do not replace them.
 
-## Teams and credits (v1.1.0)
+## Teams and credits (v1.2.0)
 
 Your API Key is fixed to the team returned by `auth/me`. Browser team switches do not move the Key or an Agent run. Never mix object IDs, files, revisions or task references between teams. Revoked membership immediately removes access. Team administrators do not have platform administration rights.
 
