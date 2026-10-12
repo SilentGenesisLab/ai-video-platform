@@ -60,7 +60,7 @@ export async function idempotent(
     "创建操作必须提供 8–200 字符 Idempotency-Key",
   );
   const requestHash = digest(canonical(request)),
-    where = { actorId_key: { actorId: actor.id, key } };
+    where = { teamId_actorId_key: { teamId: actor.teamId, actorId: actor.id, key } };
   const previous = await db.idempotency.findUnique({ where });
   const replay = (response: any) => {
     if (response?.kind === "product") productAccess(actor, response.id);
@@ -75,7 +75,7 @@ export async function idempotent(
     return await db.$transaction(
       async (tx) => {
         const record = await tx.idempotency.create({
-          data: { actorId: actor.id, key, requestHash },
+          data: { teamId: actor.teamId, actorId: actor.id, key, requestHash },
         });
         const result = await fn(tx);
         await tx.idempotency.update({
@@ -104,7 +104,7 @@ export async function idempotent(
 export async function getResource(actor: Actor, id: string, tx: Tx = db) {
   requireScope(actor, "read");
   const r = await tx.resource.findUnique({ where: { id } });
-  assert(r, 404, "对象不存在");
+  assert(r && r.teamId === actor.teamId, 404, "对象不存在");
   productAccess(actor, r.kind === "product" ? r.id : r.productId);
   return r;
 }
@@ -516,12 +516,13 @@ export async function saveKey(
     "不能为其他成员创建 Key",
   );
   const owner = await tx.user.findUnique({ where: { id: ownerId } });
-  assert(owner?.active, 422, "成员不可用");
+  const membership = await tx.teamMember.findUnique({ where: { teamId_userId: { teamId: actor.teamId, userId: ownerId } } });
+  assert(owner?.active && membership?.active, 422, "成员不可用");
   assert(
     data.scopes.every(
       (s) =>
         actor.scopes.includes(s) &&
-        (roles[owner.role] ?? []).includes(s) &&
+        (roles[membership!.role] ?? []).includes(s) &&
         agentScopes.includes(s),
     ),
     403,
@@ -597,8 +598,8 @@ export async function keyAction(actor: Actor, id: string, action: string) {
     );
     await audit(tx, actor, "key.instructions_copied", id);
     return {
-      instructions: `请安装并使用 AI Video Platform Skill（版本 1.0.0）。\n平台：${base}\n安装入口：${base}/skills/ai-video-platform/SKILL.md\n安装包：${base}/skills/ai-video-platform.zip\n\n将以下配置保存到你环境的私有凭据配置中，不打印或提交到仓库：\nAIVIDEO_BASE_URL=${base}\nAIVIDEO_API_KEY=${decrypt(key.ciphertext)}\n\n先读取安装入口，安装到当前 Agent 支持的 Skill 目录。使用 GET /api/v1/auth/me 验证身份与权限；验证阶段不要创建数据或调用生成。后续按我的具体任务操作平台。\n权限：${key.scopes.join(", ")}\n产品范围：${key.productIds.length ? key.productIds.join(", ") : "全部产品"}\n视频生成必须在平台人工审批。`,
-      skillVersion: "1.0.0",
+      instructions: `请安装并使用 AI Video Platform Skill（版本 1.1.0）。\n平台：${base}\n安装入口：${base}/skills/ai-video-platform/SKILL.md\n安装包：${base}/skills/ai-video-platform.zip\n\n将以下配置保存到你环境的私有凭据配置中，不打印或提交到仓库：\nAIVIDEO_BASE_URL=${base}\nAIVIDEO_API_KEY=${decrypt(key.ciphertext)}\n\n先读取安装入口，安装到当前 Agent 支持的 Skill 目录。使用 GET /api/v1/auth/me 验证身份与权限；验证阶段不要创建数据或调用生成。后续按我的具体任务操作平台。\n权限：${key.scopes.join(", ")}\n固定团队：${actor.teamName} (${actor.teamId})\n产品范围：${key.productIds.length ? key.productIds.join(", ") : "全部产品"}\n视频生成必须在平台人工审批。`,
+      skillVersion: "1.1.0",
     };
   });
 }

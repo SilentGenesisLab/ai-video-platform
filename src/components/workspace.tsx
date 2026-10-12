@@ -1173,6 +1173,8 @@ function GenerationDialog({
     sound: false,
   });
   const [busy, setBusy] = useState(false);
+  const [quote, setQuote] = useState<any>(null);
+  useEffect(() => setQuote(null), [data]);
   const availableModels: string[] =
     channels.find((c: any) => c.id === data.channelId)?.models?.[data.kind] ??
     [];
@@ -1189,7 +1191,7 @@ function GenerationDialog({
     try {
       const c = channels.find((c: any) => c.id === data.channelId);
       if (!c) throw new Error("请先配置媒体渠道");
-      await api("/production-batches", "POST", {
+      const payload = {
         title: data.title || "新制作批次",
         productId: data.productId,
         ...(data.planId ? { planId: data.planId } : {}),
@@ -1218,6 +1220,14 @@ function GenerationDialog({
                   : { instrumental: true, title: data.title },
           },
         ],
+      };
+      if (!quote) {
+        setQuote(await api("/billing/quotes", "POST", payload));
+        return;
+      }
+      await api("/production-batches", "POST", {
+        ...payload,
+        quoteId: quote.id,
       });
       notify(
         data.kind === "video" ? "已提交，等待人工审批" : "任务已加入制作队列",
@@ -1417,6 +1427,21 @@ function GenerationDialog({
           提交后生成审批快照。审核者确认后才会调用视频生成接口。
         </div>
       )}
+      {quote && (
+        <div className="notice">
+          <b>预计冻结 {Number(quote.amount).toLocaleString()} 积分</b>
+          <p>
+            报价有效至 {new Date(quote.expiresAt).toLocaleTimeString()}。
+            {quote.lines
+              .map(
+                (l: any) =>
+                  `${l.model} · ${l.units} ${l.unit} · ${l.amount} 分`,
+              )
+              .join("；")}
+            。完成后根据费用结算。
+          </p>
+        </div>
+      )}
       <footer className="modal-actions">
         <Button onClick={onClose}>取消</Button>
         <Button
@@ -1435,7 +1460,11 @@ function GenerationDialog({
           ) : (
             <ArrowUpRight size={16} />
           )}
-          提交{data.kind === "video" ? "审批" : "生成"}
+          {quote
+            ? data.kind === "video"
+              ? "确认报价并提交审批"
+              : "确认报价并生成"
+            : "获取积分报价"}
         </Button>
       </footer>
     </Modal>
@@ -2036,7 +2065,7 @@ export default function Workspace() {
         <div className="studio-label">
           <span className="studio-avatar">S</span>
           <div>
-            <b>SilentGenesis</b>
+            <b>{actor?.teamName ?? "团队"}</b>
             <small>创作工作室</small>
           </div>
           <span className="workspace-pill">TEAM</span>
@@ -2075,19 +2104,10 @@ export default function Workspace() {
               开始对话 <ArrowUpRight size={15} />
             </button>
           </div>
-          {actor?.role === "admin" && (
-            <button
-              className="team-button"
-              onClick={() =>
-                api("/members")
-                  .then((r) => setMembers(r.items))
-                  .catch((e) => notify(e.message))
-              }
-            >
-              <Users size={16} />
-              团队成员
-            </button>
-          )}
+          <a className="team-button" href="/team">
+            <Users size={16} />
+            团队、积分与账号
+          </a>
           <div className="user-row">
             <span>{actor?.name?.[0] ?? "S"}</span>
             <div>
@@ -2152,7 +2172,7 @@ export default function Workspace() {
                   创建 API Key
                 </Button>
               ) : section === "channels" ? (
-                actor?.role === "admin" && (
+                actor?.platformAdmin && (
                   <Button primary onClick={() => setChannelEditor({})}>
                     <Plus size={17} />
                     添加渠道
@@ -2575,7 +2595,7 @@ export default function Workspace() {
                   </div>
                   <footer>
                     <small>并发上限 {c.concurrency}</small>
-                    {actor?.role === "admin" && (
+                    {actor?.platformAdmin && (
                       <Button onClick={() => setChannelEditor(c)}>
                         <Settings2 size={15} />
                         配置
@@ -3207,7 +3227,11 @@ export default function Workspace() {
             actor?.scopes?.includes("approve") && (
               <footer className="modal-actions">
                 <span className="small muted">
-                  确认后将提交以上 {detail.snapshot.entries.length} 项视频任务
+                  确认后冻结 {detail.snapshot.estimatedCredits ?? "—"} 分，提交{" "}
+                  {detail.snapshot.entries.length} 项视频任务；报价有效至{" "}
+                  {new Date(
+                    detail.snapshot.quoteExpiresAt,
+                  ).toLocaleTimeString()}
                 </span>
                 <Button onClick={() => approve(detail, "reject")}>拒绝</Button>
                 <Button primary onClick={() => approve(detail, "approve")}>

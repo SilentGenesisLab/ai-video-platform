@@ -8,6 +8,7 @@ import type { Actor } from "../src/lib/auth";
 async function main() {
   const user = await db.user.findFirstOrThrow({ where: { role: "admin" } });
   const actor: Actor = {
+ teamId:"legacy-team",teamName:"原团队",teamRole:"owner",platformAdmin:true,
     id: user.id,
     userId: user.id,
     name: user.name,

@@ -14,6 +14,7 @@ import {
 } from "../src/lib/auth";
 import { validateMagic, objectKey } from "../src/lib/storage";
 const actor: Actor = {
+ teamId:"legacy-team",teamName:"原团队",teamRole:"owner",platformAdmin:true,
   id: "key",
   userId: "owner",
   name: "Agent",

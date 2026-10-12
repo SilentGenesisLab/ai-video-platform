@@ -146,7 +146,11 @@ export async function claimRun() {
     });
     run.conversation.messages.reverse();
     const owner = await tx.user.findUnique({ where: { id: run.ownerId } });
-    if (!owner?.active) {
+    const membership = await tx.teamMember.findUnique({
+      where: { teamId_userId: { teamId: run.teamId, userId: run.ownerId } },
+    });
+    const team = await tx.team.findUnique({ where: { id: run.teamId } });
+    if (!owner?.active || !membership?.active || team?.archived) {
       await tx.agentRun.update({
         where: { id: run.id },
         data: { status: "failed", error: "所属账号不可用" },
@@ -166,11 +170,12 @@ export async function claimRun() {
       messages: run.conversation.messages,
       token: decrypt(run.tokenCiphertext),
       model: {
-        baseUrl: channel.baseUrl,
-        apiKey: decrypt(channel.ciphertext),
+        channelId: channel.id,
         model: (channel.models as any).text?.[0] ?? "deepseek-flash",
       },
-      scopes: run.scopes.filter((s) => (roles[owner.role] ?? []).includes(s)),
+      scopes: run.scopes.filter((s) =>
+        (roles[membership.role] ?? []).includes(s),
+      ),
     };
   });
 }

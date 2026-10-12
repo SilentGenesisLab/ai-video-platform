@@ -20,9 +20,8 @@ export async function reserveSubmission(
       409,
       "渠道已停用或地址已改变，请重新创建批次",
     );
-    const active = await tx.job.count({
-      where: { channelId, status: { in: ["submitting", "running"] } },
-    });
+    const rows=await tx.$queryRaw<{count:bigint}[]>`SELECT count(*) FROM "Job" WHERE "channelId"=${channelId} AND status IN ('submitting','running')`;
+    const active=Number(rows[0].count);
     if (active >= channel.concurrency) return false;
     const result = await tx.job.updateMany({
       where: {

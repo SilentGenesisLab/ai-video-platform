@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Actor, requireHuman, requireScope } from "./auth";
+import { Actor, requireHuman, requirePlatform, requireScope } from "./auth";
 import { assert } from "./errors";
 import { db } from "./db";
 import { encrypt } from "./security";
@@ -18,7 +18,7 @@ const schema = z.object({
 export async function listChannels(actor: Actor) {
   requireScope(actor, "read");
   const rows = await db.channel.findMany({ orderBy: { createdAt: "asc" } });
-  return rows.map(({ ciphertext, ...c }) => ({
+  return rows.filter(c=>actor.platformAdmin||c.enabled).map(({ ciphertext, ...c }) => ({
     ...c,
     configured: !!ciphertext,
   }));
@@ -30,7 +30,7 @@ export async function saveChannel(
   id?: string,
 ) {
   requireHuman(actor);
-  requireScope(actor, "admin");
+  requirePlatform(actor);
   const { apiKey, ...data } = schema.parse(input);
   const old = id ? await tx.channel.findUnique({ where: { id } }) : null;
   if (id) assert(old, 404, "渠道不存在");

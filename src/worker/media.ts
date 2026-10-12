@@ -1,3 +1,5 @@
+import { workerActor } from "../lib/worker-access";
+import { meteredCall } from "../lib/metering";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -50,7 +52,7 @@ export async function probeMedia(
     await rm(dir, { recursive: true, force: true });
   }
 }
-export async function parseFile(fileId: string) {
+export async function parseFile(fileId: string, jobId: string) {
   const file = await db.fileObject.findUniqueOrThrow({ where: { id: fileId } });
   try {
     const result = await oss().get(file.key),
@@ -71,45 +73,41 @@ export async function parseFile(fileId: string) {
         where: { provider: "deepseek", enabled: true },
       });
       if (!channel) throw new Error("识图渠道未配置");
-      const response = await fetch(
-        channel.baseUrl.replace(/\/$/, "") + "/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + decrypt(channel.ciphertext),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: (channel.models as any).text?.[0] ?? "deepseek-flash",
-            messages: [
+      const payload = {
+        model: (channel.models as any).vision?.[0] ?? "deepseek-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
               {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: "请用中文客观描述此产品资料图片，提取可见文字和外观特征。不要编造卖点，把推测与事实区分。",
-                  },
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url:
-                        "data:" +
-                        file.mime +
-                        ";base64," +
-                        buffer.toString("base64"),
-                    },
-                  },
-                ],
+                type: "text",
+                text: "请用中文客观描述此产品资料图片，提取可见文字和外观特征。不要编造卖点，把推测与事实区分。",
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url:
+                    "data:" +
+                    file.mime +
+                    ";base64," +
+                    buffer.toString("base64"),
+                },
               },
             ],
-            max_tokens: 2000,
-            thinking: { type: "disabled" },
-          }),
-          signal: AbortSignal.timeout(120000),
-        },
+          },
+        ],
+        max_tokens: 2000,
+        thinking: { type: "disabled" },
+      };
+      const response = await meteredCall(
+        await workerActor(file.teamId, file.createdBy),
+        "parse:" + jobId,
+        channel.id,
+        "vision",
+        payload.model,
+        payload,
       );
-      if (!response.ok) throw new Error("图片理解失败 HTTP " + response.status);
-      text = (await response.json()).choices?.[0]?.message?.content ?? "";
+      text = response.choices?.[0]?.message?.content ?? "";
       if (!text.trim()) throw new Error("识图模型未返回有效文本，请重试解析");
     } else if (
       file.mime.startsWith("video/") ||
@@ -155,13 +153,22 @@ export async function parseFile(fileId: string) {
           where: { provider: "aicentre", enabled: true },
         });
         if (!channel) throw new Error("转写渠道未配置");
-        const speech = await providerRequest(
+        const model = (channel.models as any).audio?.find((m: string) =>
+          m.includes("asr"),
+        );
+        if (!model) throw new Error("转写型号与采购价尚未配置");
+        const speech = await meteredCall(
+          await workerActor(file.teamId, file.createdBy),
+          "parse:" + jobId,
           channel.id,
-          "/v1/asr/transcriptions",
+          "audio",
+          model,
           {
+            model,
             file_url: oss().signatureUrl(file.key, { expires: 7200 }),
             language: "auto",
           },
+          "/v1/asr/transcriptions",
         );
         text = speech.text ?? "";
       }

@@ -1,7 +1,9 @@
+import { workerActor } from "../lib/worker-access";
+import { settleUsage, usageFromResult } from "../lib/billing";
 import "dotenv/config";
 import { Queue, Worker } from "bullmq";
 import { randomUUID } from "node:crypto";
-import { db } from "../lib/db";
+import { db, systemDb, withTeam } from "../lib/db";
 import { json } from "../lib/services";
 import { canonical, digest, redact } from "../lib/security";
 import { persistBuffer } from "../lib/storage";
@@ -17,6 +19,7 @@ import { buildOverview, parseFile, probeMedia } from "./media";
 import { reserveSubmission, providerResult } from "./lifecycle";
 const redisUrl = new URL(process.env.REDIS_URL ?? "redis://localhost:6379");
 const connection = {
+  db: Number(redisUrl.pathname.slice(1) || 0),
   host: redisUrl.hostname,
   port: Number(redisUrl.port || 6379),
   password: redisUrl.password || undefined,
@@ -31,6 +34,11 @@ async function schedule(jobId: string, phase: string, delay = 0) {
   });
 }
 async function execute(id: string, phase: string) {
+  const found = await systemDb.job.findUnique({ where: { id } });
+  if (!found) return;
+  return withTeam(found.teamId, () => executeScoped(id, phase));
+}
+async function executeScoped(id: string, phase: string) {
   const owner = randomUUID();
   const claimed = await db.job.updateMany({
     where: {
@@ -75,7 +83,7 @@ async function execute(id: string, phase: string) {
       return;
     }
     if (phase === "parse") {
-      await parseFile((job.input as any).fileId);
+      await parseFile((job.input as any).fileId, job.id);
       await db.job.update({
         where: { id },
         data: { status: "succeeded", phase: "done" },
@@ -104,6 +112,11 @@ async function execute(id: string, phase: string) {
           409,
           "缺少有效视频审批",
         );
+      await workerActor(job.teamId, job.batch?.createdBy ?? "missing");
+      const usage = await db.usageRecord.findUnique({
+        where: { id: (job.input as any).usageId ?? "missing" },
+      });
+      assert(usage?.status === "reserved", 409, "缺少有效积分冻结，禁止提交");
       const path = providerPath(job.kind);
       if (
         !(await reserveSubmission(
@@ -177,6 +190,15 @@ async function execute(id: string, phase: string) {
         (job.input as any).channelSnapshot?.baseUrl,
       );
       const state = result.status ?? result.state;
+      if (
+        ["succeeded", "completed", "failed", "cancelled"].includes(state) &&
+        (job.input as any).usageId
+      )
+        await usageFromResult(
+          (job.input as any).usageId,
+          result,
+          ["succeeded", "completed"].includes(state),
+        );
       if (["succeeded", "completed"].includes(state)) {
         await db.$transaction(async (tx) => {
           await tx.job.update({
@@ -317,6 +339,21 @@ async function execute(id: string, phase: string) {
       where: { id, leaseOwner: owner },
       data: { leaseOwner: null, leaseUntil: null },
     });
+    if (latest && (latest.input as any).usageId) {
+      const u = await db.usageRecord.findUnique({
+        where: { id: (latest.input as any).usageId },
+      });
+      if (
+        u?.status === "reserved" &&
+        ["cancelled", "failed", "submission_unknown"].includes(latest.status)
+      )
+        await settleUsage(
+          u.id,
+          !latest.upstreamId && !latest.providerPath && job.status === "queued"
+            ? 0
+            : null,
+        );
+    }
     await refreshBatch(job.batchId);
   }
 }
@@ -361,6 +398,27 @@ async function dispatch() {
         error: "提交进程中断，需确认供应商是否已接单；系统没有重新提交。",
       },
     });
+    await db.usageRecord.updateMany({
+      where: {
+        status: "submitting",
+        updatedAt: { lt: new Date(Date.now() - 300000) },
+      },
+      data: {
+        status: "reconcile",
+        error: "调用进程中断或结果未确认，等待对账",
+      },
+    });
+    const uncertain = await db.job.findMany({
+      where: { status: "submission_unknown" },
+      take: 100,
+    });
+    for (const job of uncertain) {
+      const id = (job.input as any).usageId;
+      if (id) {
+        const u = await db.usageRecord.findUnique({ where: { id } });
+        if (u?.status === "reserved") await settleUsage(id, null);
+      }
+    }
     // Recover lost Redis messages using durable job state; provider submission is never replayed after it starts.
     const stale = await db.job.findMany({
       where: {

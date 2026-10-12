@@ -1,3 +1,4 @@
+import { batchDigest, reserveUsage, validateQuoteRates } from "./billing";
 import { batchInput, GenerationEntry } from "./contracts";
 import { Actor, productAccess, requireHuman, requireScope } from "./auth";
 import { assert } from "./errors";
@@ -206,7 +207,28 @@ export async function createBatch(actor: Actor, input: unknown, tx: Tx) {
       ),
     );
   }
-  const snapshot = { entries, productVersion: product.version },
+  assert(data.quoteId, 422, "请先获取并确认积分报价");
+  const quote = await tx.creditQuote.findUnique({
+    where: { id: data.quoteId },
+  });
+  assert(
+    quote &&
+      quote.actorId === actor.userId &&
+      !quote.usedBy &&
+      quote.expiresAt > new Date() &&
+      quote.digest === batchDigest(data),
+    409,
+    "报价已失效或生成内容变化，请重新报价",
+  );
+  await validateQuoteRates(tx, quote.lines);
+  const snapshot = {
+      entries,
+      productVersion: product.version,
+      quoteId: quote.id,
+      quoteExpiresAt: quote.expiresAt.toISOString(),
+      quoteLines: quote.lines,
+      estimatedCredits: quote.amount.toString(),
+    },
     hash = digest(canonical(snapshot));
   const batch = await tx.productionBatch.create({
     data: {
@@ -220,6 +242,11 @@ export async function createBatch(actor: Actor, input: unknown, tx: Tx) {
       createdBy: actor.id,
     },
   });
+  const used = await tx.creditQuote.updateMany({
+    where: { id: quote.id, usedBy: null },
+    data: { usedBy: batch.id },
+  });
+  assert(used.count === 1, 409, "报价已使用");
   if (data.kind !== "video") await enqueueBatch(tx, batch);
   await audit(tx, actor, "batch.created", batch.id, batch.productId, {
     kind: batch.kind,
@@ -235,9 +262,11 @@ async function enqueueBatch(
     planId: string | null;
     kind: string;
     snapshot: unknown;
+    teamId: string;
+    createdBy: string;
   },
 ) {
-  for (const entry of (batch.snapshot as any).entries) {
+  for (const [index, entry] of (batch.snapshot as any).entries.entries()) {
     const job = await tx.job.create({
       data: {
         batchId: batch.id,
@@ -247,6 +276,17 @@ async function enqueueBatch(
         channelId: entry.channelId,
         input: json(entry),
       },
+    });
+    const usage = await reserveUsage(
+      tx,
+      { teamId: batch.teamId, userId: batch.createdBy },
+      "job:" + job.id,
+      (batch.snapshot as any).quoteLines[index],
+      digest(canonical(entry)),
+    );
+    await tx.job.update({
+      where: { id: job.id },
+      data: { input: json({ ...entry, usageId: usage.id }) },
     });
     await tx.outbox.create({ data: { jobId: job.id, phase: "submit" } });
   }
@@ -280,7 +320,15 @@ export async function decideBatch(
       },
     });
     assert(result.count === 1, 409, "批次已被其他人处理");
-    if (input.decision === "approve") await enqueueBatch(tx, batch);
+    if (input.decision === "approve") {
+      assert(
+        new Date((batch.snapshot as any).quoteExpiresAt) > new Date(),
+        409,
+        "报价已过期，请重新提交报价与审批",
+      );
+      await validateQuoteRates(tx, (batch.snapshot as any).quoteLines);
+      await enqueueBatch(tx, batch);
+    }
     await audit(tx, actor, "batch." + input.decision, id, batch.productId, {
       digest: batch.digest,
     });
