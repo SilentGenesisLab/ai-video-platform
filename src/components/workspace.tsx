@@ -1623,7 +1623,12 @@ export default function Workspace() {
             );
           }
         })
-        .catch(() => {});
+        .catch((e) => {
+          if ([403, 404].includes(e.status)) {
+            sessionStorage.removeItem("concept-scoring-job");
+            setScoringJob(null);
+          }
+        });
     }, 2000);
     return () => clearInterval(timer);
   }, [scoringJob?.id, scoringJob?.status]);

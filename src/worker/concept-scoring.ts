@@ -3,6 +3,7 @@ import { getResource, saveResource, json } from "../lib/services";
 import { workerActor } from "../lib/worker-access";
 import { meteredCall } from "../lib/metering";
 import { rubric, evaluateScores, isUnscored } from "../lib/concept-scoring";
+import { HttpError } from "../lib/errors";
 import { requireScope } from "../lib/auth";
 export async function scoreConcepts(jobId: string) {
   const job = await db.job.findUniqueOrThrow({ where: { id: jobId } });
@@ -69,16 +70,18 @@ export async function scoreConcepts(jobId: string) {
         const grading = evaluateScores(
           JSON.parse(response.choices[0].message.content),
         );
+        const savingActor = await workerActor(job.teamId, input.createdBy);
+        requireScope(savingActor, "write");
         await db.$transaction(async (tx) => {
           await tx.$queryRaw`SELECT id FROM "Resource" WHERE id = ${concept.id} FOR UPDATE`;
-          const latest = await getResource(currentActor, concept.id, tx);
+          const latest = await getResource(savingActor, concept.id, tx);
           if (
             latest.version !== snapshot.version ||
             !isUnscored(latest.content)
           )
-            throw new Error("内容或评分已更新，跳过");
+            throw new HttpError(409, "内容或评分已更新，跳过");
           await saveResource(
-            currentActor,
+            savingActor,
             "concept",
             {
               title: latest.title,
@@ -115,7 +118,12 @@ export async function scoreConcepts(jobId: string) {
     } catch (e) {
       result = {
         id: snapshot.id,
-        status: "failed",
+        status:
+          e instanceof HttpError &&
+          e.status === 409 &&
+          e.message.includes("已更新")
+            ? "skipped"
+            : "failed",
         reason: e instanceof Error ? e.message : "评分失败",
       };
       results.push(result);

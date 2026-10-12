@@ -150,7 +150,9 @@ async function handle(
               messages: z.array(z.any()).max(500),
               tools: z.array(z.any()).optional(),
               max_tokens: z.number().int().positive().max(8192),
-              thinking: z.object({ type: z.enum(["enabled", "disabled"]) }).optional(),
+              thinking: z
+                .object({ type: z.enum(["enabled", "disabled"]) })
+                .optional(),
             }),
           })
           .parse(body);
@@ -754,6 +756,9 @@ async function handle(
           return ok({
             items: await db.job.findMany({
               where: {
+                ...(actor.type === "agent"
+                  ? { kind: { not: "concept_scoring" } }
+                  : {}),
                 ...(await scopedFilter(actor)),
                 ...(productId
                   ? { productId }

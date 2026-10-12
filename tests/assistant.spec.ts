@@ -569,5 +569,7 @@ test("ASSISTANT-10 bulk scores unscored concepts and preserves manual zero", asy
     Number(wallet.balance),
   );
   await page.reload();
-  await expect(page.getByText("评分依据", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("评分依据", { exact: true }).first(),
+  ).toBeVisible();
 });
