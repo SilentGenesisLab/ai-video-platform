@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { productContentSchema } from "./product-content";
 export const kinds = [
   "product",
   "creative-batch",
@@ -43,23 +44,7 @@ export const shotSchema = z.object({
   candidateFileIds: strings.default([]),
 });
 export const contentSchemas: Record<Kind, z.ZodType> = {
-  product: z.object({
-    description: text.default(""),
-    sellingPoints: strings.default([]),
-    audience: text.default(""),
-    brief: text.default(""),
-    fileIds: strings.default([]),
-    coverFileId: z.string().optional(),
-    facts: z
-      .array(
-        z.object({
-          text,
-          kind: z.enum(["fact", "hypothesis"]),
-          fileId: z.string().optional(),
-        }),
-      )
-      .default([]),
-  }),
+  product: productContentSchema,
   "creative-batch": z.object({
     requirements: text.default(""),
     count: z.number().int().min(1).max(100).default(10),

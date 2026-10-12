@@ -75,9 +75,14 @@ export function openapi() {
   }
   paths["/api/v1/products/{id}/context"] = {
     get: operation(
-      "Read product, related resources and extracted materials",
+      "Read structured product insights, materials and related resources; follow pagination next links",
       undefined,
-      [param("id")],
+      [
+        param("id"),
+        ...["filesPage", "resourcesPage", "limit"].map((p) =>
+          param(p, "query"),
+        ),
+      ],
     ),
   };
   const extras: [string, string, string, unknown?][] = [
@@ -117,7 +122,7 @@ export function openapi() {
     [
       "/files/{id}/complete",
       "post",
-      "Validate uploaded file and schedule parsing",
+      "Validate uploaded file; schedule parsing unless parsePolicy is skip",
       {},
     ],
     ["/files/{id}/upload-url", "post", "Renew expired staging PUT URL", {}],
@@ -216,11 +221,19 @@ export function openapi() {
       ),
     };
   }
+  const fileList = paths["/api/v1/files"] as any;
+  fileList.get.parameters = ["productId", "page", "limit"].map((p) =>
+    param(p, "query"),
+  );
+  fileList.get.description =
+    "Returns items,total,page,limit,hasMore. Defaults to 100 items, maximum 100 per page.";
+  (paths["/api/v1/products/{id}"] as any).patch.description =
+    "Product content is a field patch: omitted fields are preserved; supplied arrays replace that array. Structured lists have stable IDs. Editing legacy sellingPoints/audience/fileIds without corresponding structured lists can return PRODUCT_STRUCTURE_CONFLICT. Re-read and update structured fields instead.";
   return {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.0.0",
+      version: "1.1.0",
       description:
         "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. Objects and files are product-scoped. Industrial storyboards belong to plans.",
     },

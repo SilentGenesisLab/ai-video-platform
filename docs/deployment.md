@@ -87,3 +87,12 @@ docker compose exec -T postgres psql -U aivideo -d aivideo_restore -c 'SELECT co
 | Agent failed/stopped/paused | 检查渠道、权限和运行记录，再点击“继续”；会从检查点恢复                                                         |
 
 供应商无法提供 external_ref 或无法证明尚未接单时，保留待确认状态并人工对账，不提供盲目重投按钮。
+
+
+## 产品洞察版本发布
+
+此版本沿用 `Resource.content`、`Revision` 和 `FileObject.metadata`，没有新建数据库表或批量改写历史。旧格式仅在读取时适配，主动保存后才写入结构化资料。发布前执行 `scripts/backup.sh`，保存旧镜像标签、提交号与私有配置，镜像构建成功后更新 web/worker；Agent 服务代码未变。
+
+新增 `remark-gfm` 已写入 lockfile。公开 Skill 与接入指令版本均为 1.1.0，下载包包含产品洞察参考文档。升级后确认 `GET /api/v1/openapi.json`、Skill ZIP 和生产只读产品上下文可访问。
+
+回退时先暂停业务写入，再使用上一个应用镜像及对应配置。旧版本不理解新字段，不应让旧客户端覆盖已补充的洞察；必要时从备份恢复到隔离库核对后切换，不直接覆盖在线数据库。素材解除关联不删除 OSS 文件，历史引用仍可追溯。

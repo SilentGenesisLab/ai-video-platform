@@ -48,6 +48,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import Markdown from "react-markdown";
+import ProductDetail from "./product-detail";
 import { api, Item, labels } from "./api";
 const navigation = [
   {
@@ -1442,140 +1443,6 @@ function GenerationDialog({
   );
 }
 
-function FilesDialog({ product, notify, onClose, readOnly = false }: any) {
-  const [files, setFiles] = useState<any[]>([]),
-    [busy, setBusy] = useState(false);
-  const load = useCallback(
-    () =>
-      api("/files?productId=" + product.id)
-        .then((r) => setFiles(r.items))
-        .catch((e) => notify(e.message)),
-    [product.id, notify],
-  );
-  useEffect(() => {
-    void load();
-  }, [load]);
-  useEffect(() => {
-    if (!files.some((f) => ["pending", "processing"].includes(f.parseStatus)))
-      return;
-    const timer = setInterval(() => void load(), 3000);
-    return () => clearInterval(timer);
-  }, [files, load]);
-  async function upload(e: React.ChangeEvent<HTMLInputElement>) {
-    const selected = e.target.files?.[0];
-    if (!selected) return;
-    setBusy(true);
-    try {
-      let mime = selected.type;
-      if (!mime)
-        mime = selected.name.endsWith(".md") ? "text/markdown" : "text/plain";
-      const init = await api("/files", "POST", {
-        productId: product.id,
-        name: selected.name,
-        mime,
-        bytes: selected.size,
-      });
-      const form = new FormData();
-      form.append("file", selected);
-      const upload = await fetch("/api/v1/files/" + init.file.id + "/upload", {
-        method: "POST",
-        body: form,
-      });
-      if (!upload.ok) {
-        const error = await upload.json();
-        throw new Error(error.error?.message ?? "上传失败");
-      }
-      await api("/files/" + init.file.id + "/complete", "POST", {});
-      const latest = await api("/products/" + product.id);
-      await api("/products/" + product.id, "PATCH", {
-        title: latest.title,
-        status: latest.status,
-        baseVersion: latest.version,
-        content: {
-          ...latest.content,
-          fileIds: [...latest.content.fileIds, init.file.id],
-          ...(!latest.content.coverFileId && mime.startsWith("image/")
-            ? { coverFileId: init.file.id }
-            : {}),
-        },
-      });
-      await load();
-      notify("已上传，正在解析资料", "success");
-    } catch (e) {
-      notify((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Modal title={product.title + " · 产品资料"} onClose={onClose} wide>
-      <div className="section-line">
-        <p className="muted">保留原始资料，并提取文本供 Agent 使用。</p>
-        {!readOnly && (
-          <label className="button primary upload-button">
-            {busy ? (
-              <LoaderCircle className="spin" size={16} />
-            ) : (
-              <Upload size={16} />
-            )}
-            上传资料
-            <input type="file" disabled={busy} onChange={upload} hidden />
-          </label>
-        )}
-      </div>
-      <div className="file-grid">
-        {files.map((file) => (
-          <article className="file-card" key={file.id}>
-            <FilePreview id={file.id} compact />
-            <h4>{file.name}</h4>
-            <span className="small muted">
-              {(file.bytes / 1024).toFixed(0)} KB · {file.parseStatus}
-            </span>
-            <Button
-              onClick={() => {
-                void navigator.clipboard.writeText(file.id);
-                notify("文件 ID 已复制", "success");
-              }}
-            >
-              <Copy size={14} />
-              复制 ID
-            </Button>
-            {file.parseError && !readOnly && (
-              <>
-                <p className="error small">{file.parseError}</p>
-                <Button
-                  onClick={() =>
-                    api("/files/" + file.id + "/retry-parse", "POST", {})
-                      .then(() => {
-                        notify("解析任务已重试", "success");
-                        void load();
-                      })
-                      .catch((e) => notify(e.message))
-                  }
-                >
-                  重试解析
-                </Button>
-              </>
-            )}
-            {file.extractedText && (
-              <details>
-                <summary>解析文本</summary>
-                <p className="small">{file.extractedText}</p>
-              </details>
-            )}
-          </article>
-        ))}
-      </div>
-      {!files.length && (
-        <Empty
-          title="还没有产品资料"
-          body="上传产品图、说明书、演示视频或访谈记录。"
-        />
-      )}
-    </Modal>
-  );
-}
-
 function ChatPanel({
   productId,
   planId,
@@ -1791,6 +1658,14 @@ export default function Workspace() {
     router = useRouter(),
     section = pathname.split("/")[2] ?? "products",
     nav = navigation.find((n) => n.id === section) ?? navigation[0];
+  const productDetailId =
+    section === "products" ? pathname.split("/")[3] : undefined;
+  const productDirty = useRef(false);
+  const onProductDirty = useCallback((dirty: boolean) => {
+    productDirty.current = dirty;
+  }, []);
+  const confirmLeaveProduct = () =>
+    !productDirty.current || window.confirm("产品有未保存的修改，确定离开？");
   const [actor, setActor] = useState<any>(null),
     [products, setProducts] = useState<Item[]>([]),
     [plans, setPlans] = useState<Item[]>([]),
@@ -1806,7 +1681,6 @@ export default function Workspace() {
     [keyEditor, setKeyEditor] = useState<any>(null),
     [channelEditor, setChannelEditor] = useState<any>(null),
     [generation, setGeneration] = useState(false),
-    [files, setFiles] = useState<Item | null>(null),
     [detail, setDetail] = useState<any>(null),
     [chat, setChat] = useState(false),
     [toast, setToast] = useState<{ text: string; kind: string } | null>(null),
@@ -1913,7 +1787,8 @@ export default function Workspace() {
           };
           setTab(routes[r.kind]);
           setProductId(r.productId ?? "");
-          setEditor({ route: routes[r.kind], item: r });
+          if (r.kind === "product") router.replace(`/studio/products/${r.id}`);
+          else setEditor({ route: routes[r.kind], item: r });
         })
         .catch((e) => notify(e.message));
   }, [pathname, notify]);
@@ -1942,9 +1817,14 @@ export default function Workspace() {
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
+  useEffect(() => {
+    if (productDetailId && productDetailId !== "new")
+      setProductId(productDetailId);
+  }, [productDetailId]);
   const canWrite = actor?.scopes?.includes("write"),
     canGenerate = actor?.scopes?.includes("generate");
   function navigate(id: string, selectedProduct = productId) {
+    if (!confirmLeaveProduct()) return;
     setItems([]);
     setPlanFilter("");
     setTab(
@@ -2098,6 +1978,7 @@ export default function Workspace() {
               aria-label="退出登录"
               className="icon-button"
               onClick={() =>
+                confirmLeaveProduct() &&
                 api("/auth/logout", "POST", {}).then(
                   () => (window.location.href = "/login"),
                 )
@@ -2128,763 +2009,813 @@ export default function Workspace() {
           </div>
         </header>
         <div className="page-body">
-          <div className="page-heading">
-            <div>
-              <span className="eyebrow">
-                {section === "keys"
-                  ? "AGENT CONNECTION"
-                  : section === "creative"
-                    ? "CREATIVE DEVELOPMENT"
-                    : section === "production"
-                      ? "PRODUCTION STUDIO"
-                      : "CREATIVE WORKSPACE"}
-              </span>
-              <h1>
-                {nav.name}
-                <span className="heading-dot">.</span>
-              </h1>
-              <p>{nav.description}</p>
-            </div>
-            <div className="heading-actions">
-              {section === "keys" ? (
-                <Button primary onClick={() => setKeyEditor({})}>
-                  <Plus size={17} />
-                  创建 API Key
-                </Button>
-              ) : section === "channels" ? (
-                actor?.role === "admin" && (
-                  <Button primary onClick={() => setChannelEditor({})}>
-                    <Plus size={17} />
-                    添加渠道
-                  </Button>
-                )
-              ) : section === "logs" ? (
-                <Button onClick={load}>
-                  <RefreshCw size={16} />
-                  刷新状态
-                </Button>
-              ) : (
-                <>
-                  {["assets", "production"].includes(section) &&
-                    canGenerate && (
-                      <Button onClick={() => setGeneration(true)}>
-                        <Play size={16} />
-                        提交制作
-                      </Button>
-                    )}
-                  {canWrite && (
-                    <Button
-                      primary
-                      onClick={() =>
-                        setEditor({
-                          route:
-                            route === "production-batches" ? "scripts" : route,
-                        })
-                      }
-                    >
-                      <Plus size={17} />
-                      {section === "products"
-                        ? "新建产品"
-                        : section === "production"
-                          ? "新建" +
-                            (route === "deliverables" ? "成片" : "脚本")
-                          : "新建" +
-                            (route === "plans"
-                              ? "策划案"
-                              : route === "storyboards"
-                                ? "工业分镜"
-                                : route === "assets"
-                                  ? "资产"
-                                  : route === "creative-batches"
-                                    ? "创意批次"
-                                    : "创意")}
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-          {section === "products" && (
+          {productDetailId ? (
+            actor && (
+              <ProductDetail
+                key={productDetailId}
+                id={productDetailId}
+                readOnly={!canWrite}
+                notify={notify}
+                onDirtyChange={onProductDirty}
+                onChat={() => setChat(true)}
+                onSaved={load}
+              />
+            )
+          ) : (
             <>
-              <section className="intro-banner">
+              <div className="page-heading">
                 <div>
-                  <span className="mini-label">FROM BRIEF TO FRAME</span>
-                  <h2>
-                    把产品的可能性，
-                    <br />
-                    变成值得被看见的故事。
-                  </h2>
-                  <button onClick={() => setChat(true)}>
-                    与创作搭档一起开始 <ArrowRight size={16} />
-                  </button>
+                  <span className="eyebrow">
+                    {section === "keys"
+                      ? "AGENT CONNECTION"
+                      : section === "creative"
+                        ? "CREATIVE DEVELOPMENT"
+                        : section === "production"
+                          ? "PRODUCTION STUDIO"
+                          : "CREATIVE WORKSPACE"}
+                  </span>
+                  <h1>
+                    {nav.name}
+                    <span className="heading-dot">.</span>
+                  </h1>
+                  <p>{nav.description}</p>
                 </div>
-                <div className="pipeline-art">
-                  <div className="art-card back">
-                    <span>03</span>
-                    <Clapperboard size={37} />
-                    <small>PRODUCTION</small>
-                  </div>
-                  <div className="art-card middle">
-                    <span>02</span>
-                    <Lightbulb size={37} />
-                    <small>CONCEPT</small>
-                  </div>
-                  <div className="art-card front">
-                    <span>01</span>
-                    <Boxes size={37} />
-                    <small>PRODUCT</small>
-                  </div>
-                </div>
-              </section>
-              <div className="stats">
-                <div>
-                  <span>产品项目</span>
-                  <strong>
-                    {stats.counts.product ?? 0}
-                    <small>个</small>
-                  </strong>
-                  <Boxes size={20} />
-                </div>
-                <div>
-                  <span>创意积累</span>
-                  <strong>
-                    {stats.counts.concept ?? 0}
-                    <small>个</small>
-                  </strong>
-                  <Lightbulb size={20} />
-                </div>
-                <div>
-                  <span>制作中</span>
-                  <strong>
-                    {stats.runningJobs ?? 0}
-                    <small>项任务</small>
-                  </strong>
-                  <Activity size={20} />
-                </div>
-                <div>
-                  <span>已完成生成</span>
-                  <strong>
-                    {stats.completedJobs ?? 0}
-                    <small>项</small>
-                  </strong>
-                  <Check size={20} />
-                </div>
-              </div>
-            </>
-          )}
-          {section === "keys" && (
-            <section className="skill-banner">
-              <div className="skill-icon">
-                <KeyRound size={26} />
-              </div>
-              <div>
-                <span className="mini-label">
-                  ONE SKILL. YOUR ENTIRE WORKFLOW.
-                </span>
-                <h2>复制一次，连接你的 Agent。</h2>
-                <p>
-                  选择下方密钥，复制接入指令。对方 Agent 将安装
-                  Skill、配置凭据并验证权限。
-                </p>
-              </div>
-              <a
-                className="button"
-                href="/skills/ai-video-platform/SKILL.md"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <FileText size={16} />
-                查看 Skill
-              </a>
-              <a
-                className="icon-button"
-                aria-label="下载 Skill 安装包"
-                href="/skills/ai-video-platform.zip"
-              >
-                <Download size={18} />
-              </a>
-            </section>
-          )}
-          {section === "creative" && (
-            <div className="tabs">
-              {[
-                ["concepts", "创意池"],
-                ["creative-batches", "创意批次"],
-                ["plans", "策划案"],
-                ["storyboards", "工业分镜"],
-              ].map(([id, name]) => (
-                <button
-                  key={id}
-                  className={route === id ? "active" : ""}
-                  onClick={() => setTab(id)}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-          )}
-          {section === "production" && (
-            <div className="tabs">
-              {[
-                ["production-batches", "制作批次"],
-                ["scripts", "制作脚本"],
-                ["deliverables", "成片交付"],
-              ].map(([id, name]) => (
-                <button
-                  key={id}
-                  className={route === id ? "active" : ""}
-                  onClick={() => setTab(id)}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-          )}
-          {section === "logs" && (
-            <div className="tabs">
-              {[
-                ["jobs", "生成任务"],
-                ["audit-events", "操作留痕"],
-              ].map(([id, name]) => (
-                <button
-                  key={id}
-                  className={route === id ? "active" : ""}
-                  onClick={() => setTab(id)}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="toolbar">
-            {defaults[route] && (
-              <label className="check-row">
-                <input
-                  type="checkbox"
-                  checked={showArchived}
-                  onChange={(e) => setShowArchived(e.target.checked)}
-                />
-                已归档
-              </label>
-            )}
-            <div>
-              <h3>
-                {section === "products"
-                  ? "全部产品"
-                  : section === "keys"
-                    ? "访问密钥"
-                    : "全部记录"}
-              </h3>
-              <span className="count">{filtered.length}</span>
-            </div>
-            <div>
-              {!["products", "keys", "channels"].includes(section) && (
-                <select
-                  aria-label="按产品筛选"
-                  value={productId}
-                  onChange={(e) => {
-                    setProductId(e.target.value);
-                    setPlanFilter("");
-                  }}
-                >
-                  <option value="">全部产品</option>
-                  {products.map((p) => (
-                    <option value={p.id} key={p.id}>
-                      {p.title}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {planFilter && (
-                <Button onClick={() => setPlanFilter("")}>策划案筛选 ×</Button>
-              )}
-              <label className="search">
-                <Search size={16} />
-                <input
-                  aria-label="搜索"
-                  placeholder="搜索名称…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </label>
-              <button
-                className="icon-button"
-                aria-label="刷新列表"
-                onClick={load}
-              >
-                <RefreshCw size={16} className={loading ? "spin" : ""} />
-              </button>
-            </div>
-          </div>
-          {loading && !items.length ? (
-            <div className="loading">
-              <LoaderCircle className="spin" />
-              正在加载工作空间…
-            </div>
-          ) : !filtered.length ? (
-            <Empty
-              title={
-                section === "products"
-                  ? "建立你的第一个产品"
-                  : section === "keys"
-                    ? "邀请第一个 Agent"
-                    : "这里等待新的创作"
-              }
-              body={
-                section === "products"
-                  ? "整理好产品资料，让创意、资产与视频围绕它生长。"
-                  : "你可以手动创建，也可以让创作搭档帮你完成。"
-              }
-              onCreate={
-                section === "products" && canWrite
-                  ? () => setEditor({ route: "products" })
-                  : section === "keys"
-                    ? () => setKeyEditor({})
-                    : undefined
-              }
-            />
-          ) : section === "keys" ? (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>密钥名称</th>
-                    <th>访问权限</th>
-                    <th>产品范围</th>
-                    <th>状态 / 有效期</th>
-                    <th>最近使用</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((k) => (
-                    <tr key={k.id}>
-                      <td>
-                        <b>{k.name}</b>
-                        <code>{k.prefix}••••••••</code>
-                        <small>{k.note}</small>
-                      </td>
-                      <td>
-                        <div className="tags">
-                          {k.scopes.map((s: string) => (
-                            <span key={s}>
-                              {
-                                {
-                                  read: "读取",
-                                  write: "编辑",
-                                  generate: "生成",
-                                }[s]
-                              }
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        {k.productIds.length
-                          ? k.productIds.length + " 个产品"
-                          : "全部产品"}
-                      </td>
-                      <td>
-                        <Badge
-                          status={
-                            !k.enabled
-                              ? "stopped"
-                              : k.expiresAt &&
-                                  new Date(k.expiresAt) < new Date()
-                                ? "archived"
-                                : "ready"
-                          }
-                        />
-                        <small>
-                          {k.expiresAt ? date(k.expiresAt) : "长期有效"}
-                        </small>
-                      </td>
-                      <td>{date(k.lastUsedAt)}</td>
-                      <td>
-                        <div className="row-actions">
-                          <Button
-                            onClick={() => copyInstructions(k)}
-                            disabled={
-                              !k.enabled ||
-                              (!!k.expiresAt &&
-                                new Date(k.expiresAt) < new Date())
-                            }
-                          >
-                            <Copy size={14} />
-                            接入指令
-                          </Button>
-                          <button
-                            className="icon-button"
-                            aria-label={"编辑 " + k.name}
-                            onClick={() => setKeyEditor(k)}
-                          >
-                            <Settings2 size={16} />
-                          </button>
-                          <button
-                            className="icon-button"
-                            aria-label={"轮换 " + k.name}
-                            onClick={() => keyAction(k, "rotate")}
-                          >
-                            <RefreshCw size={15} />
-                          </button>
-                          <button
-                            className="icon-button danger"
-                            aria-label={"撤销 " + k.name}
-                            onClick={() => keyAction(k, "revoke")}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : section === "channels" ? (
-            <div className="channel-grid">
-              {filtered.map((c) => (
-                <article className="channel-card" key={c.id}>
-                  <header>
-                    <span className="channel-logo">
-                      {c.provider === "deepseek" ? "D" : "AI"}
-                    </span>
-                    <Badge status={c.enabled ? "ready" : "stopped"} />
-                  </header>
-                  <h3>{c.name}</h3>
-                  <p className="small muted">{c.baseUrl}</p>
-                  <div className="channel-models">
-                    {Object.entries(c.models).map(([kind, models]: any) => (
-                      <div key={kind}>
-                        <span>
-                          {
-                            (
-                              {
-                                text: "文本",
-                                vision: "识图",
-                                image: "图片",
-                                video: "视频",
-                                audio: "音乐",
-                              } as Record<string, string>
-                            )[kind]
-                          }
-                        </span>
-                        <p>{models.join(" · ")}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <footer>
-                    <small>并发上限 {c.concurrency}</small>
-                    {actor?.role === "admin" && (
-                      <Button onClick={() => setChannelEditor(c)}>
-                        <Settings2 size={15} />
-                        配置
+                <div className="heading-actions">
+                  {section === "keys" ? (
+                    <Button primary onClick={() => setKeyEditor({})}>
+                      <Plus size={17} />
+                      创建 API Key
+                    </Button>
+                  ) : section === "channels" ? (
+                    actor?.role === "admin" && (
+                      <Button primary onClick={() => setChannelEditor({})}>
+                        <Plus size={17} />
+                        添加渠道
                       </Button>
-                    )}
-                  </footer>
-                </article>
-              ))}
-            </div>
-          ) : route === "production-batches" ? (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>制作批次</th>
-                    <th>类型</th>
-                    <th>任务数</th>
-                    <th>状态</th>
-                    <th>创建时间</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((b) => (
-                    <tr key={b.id}>
-                      <td>
-                        <b>{b.title}</b>
-                        <small>
-                          {products.find((p) => p.id === b.productId)?.title}
-                        </small>
-                      </td>
-                      <td>
-                        {
-                          (
-                            {
-                              image: "图片",
-                              video: "视频",
-                              audio: "音乐",
-                            } as Record<string, string>
-                          )[b.kind]
-                        }
-                      </td>
-                      <td>{b.jobs?.length || b.snapshot.entries.length}</td>
-                      <td>
-                        <Badge status={b.status} />
-                      </td>
-                      <td>{date(b.createdAt)}</td>
-                      <td>
-                        <Button onClick={() => openDetail(b)}>
-                          {b.status === "pending_approval"
-                            ? "查看审批"
-                            : "查看结果"}
-                          <ArrowUpRight size={15} />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : section === "logs" ? (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{route === "jobs" ? "任务" : "操作"}</th>
-                    <th>状态 / 身份</th>
-                    <th>时间</th>
-                    <th>说明</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((i) => (
-                    <tr key={i.id}>
-                      <td>
-                        <b>
-                          {i.action ??
-                            (
-                              {
-                                image: "图片生成",
-                                video: "视频生成",
-                                audio: "音乐生成",
-                                parse: "资料解析",
-                                overview: "分镜总览",
-                              } as any
-                            )[i.kind]}
-                        </b>
-                        <code>{i.id.slice(0, 16)}…</code>
-                      </td>
-                      <td>
-                        {i.status ? <Badge status={i.status} /> : i.actorType}
-                      </td>
-                      <td>{date(i.createdAt)}</td>
-                      <td className="truncate">
-                        {i.error ?? i.actualChannel ?? i.entityId ?? "—"}
-                      </td>
-                      <td>
+                    )
+                  ) : section === "logs" ? (
+                    <Button onClick={load}>
+                      <RefreshCw size={16} />
+                      刷新状态
+                    </Button>
+                  ) : (
+                    <>
+                      {["assets", "production"].includes(section) &&
+                        canGenerate && (
+                          <Button onClick={() => setGeneration(true)}>
+                            <Play size={16} />
+                            提交制作
+                          </Button>
+                        )}
+                      {canWrite && (
                         <Button
+                          primary
                           onClick={() =>
-                            route === "jobs" ? openDetail(i) : setDetail(i)
+                            section === "products"
+                              ? router.push("/studio/products/new")
+                              : setEditor({
+                                  route:
+                                    route === "production-batches"
+                                      ? "scripts"
+                                      : route,
+                                })
                           }
                         >
-                          详情
-                          <ArrowUpRight size={14} />
+                          <Plus size={17} />
+                          {section === "products"
+                            ? "新建产品"
+                            : section === "production"
+                              ? "新建" +
+                                (route === "deliverables" ? "成片" : "脚本")
+                              : "新建" +
+                                (route === "plans"
+                                  ? "策划案"
+                                  : route === "storyboards"
+                                    ? "工业分镜"
+                                    : route === "assets"
+                                      ? "资产"
+                                      : route === "creative-batches"
+                                        ? "创意批次"
+                                        : "创意")}
                         </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div
-              className={
-                "resource-grid " +
-                (section === "products" ? "product-grid" : "")
-              }
-            >
-              {filtered.map((item: Item) => (
-                <article key={item.id} className="resource-card">
-                  <div
-                    className="card-media"
-                    onClick={() => setEditor({ route, item })}
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+              {section === "products" && (
+                <>
+                  <section className="intro-banner">
+                    <div>
+                      <span className="mini-label">FROM BRIEF TO FRAME</span>
+                      <h2>
+                        把产品的可能性，
+                        <br />
+                        变成值得被看见的故事。
+                      </h2>
+                      <button onClick={() => setChat(true)}>
+                        与创作搭档一起开始 <ArrowRight size={16} />
+                      </button>
+                    </div>
+                    <div className="pipeline-art">
+                      <div className="art-card back">
+                        <span>03</span>
+                        <Clapperboard size={37} />
+                        <small>PRODUCTION</small>
+                      </div>
+                      <div className="art-card middle">
+                        <span>02</span>
+                        <Lightbulb size={37} />
+                        <small>CONCEPT</small>
+                      </div>
+                      <div className="art-card front">
+                        <span>01</span>
+                        <Boxes size={37} />
+                        <small>PRODUCT</small>
+                      </div>
+                    </div>
+                  </section>
+                  <div className="stats">
+                    <div>
+                      <span>产品项目</span>
+                      <strong>
+                        {stats.counts.product ?? 0}
+                        <small>个</small>
+                      </strong>
+                      <Boxes size={20} />
+                    </div>
+                    <div>
+                      <span>创意积累</span>
+                      <strong>
+                        {stats.counts.concept ?? 0}
+                        <small>个</small>
+                      </strong>
+                      <Lightbulb size={20} />
+                    </div>
+                    <div>
+                      <span>制作中</span>
+                      <strong>
+                        {stats.runningJobs ?? 0}
+                        <small>项任务</small>
+                      </strong>
+                      <Activity size={20} />
+                    </div>
+                    <div>
+                      <span>已完成生成</span>
+                      <strong>
+                        {stats.completedJobs ?? 0}
+                        <small>项</small>
+                      </strong>
+                      <Check size={20} />
+                    </div>
+                  </div>
+                </>
+              )}
+              {section === "keys" && (
+                <section className="skill-banner">
+                  <div className="skill-icon">
+                    <KeyRound size={26} />
+                  </div>
+                  <div>
+                    <span className="mini-label">
+                      ONE SKILL. YOUR ENTIRE WORKFLOW.
+                    </span>
+                    <h2>复制一次，连接你的 Agent。</h2>
+                    <p>
+                      选择下方密钥，复制接入指令。对方 Agent 将安装
+                      Skill、配置凭据并验证权限。
+                    </p>
+                  </div>
+                  <a
+                    className="button"
+                    href="/skills/ai-video-platform/SKILL.md"
+                    target="_blank"
+                    rel="noreferrer"
                   >
-                    {route === "products" ||
-                    route === "assets" ||
-                    route === "deliverables" ? (
-                      <FilePreview
-                        id={
-                          item.content.coverFileId ??
-                          item.content.selectedFileId ??
-                          item.content.fileId
-                        }
-                        compact
-                      />
-                    ) : route === "storyboards" ? (
-                      <div className="board-mini">
-                        {Array.from({ length: 9 }, (_, i) => (
-                          <div key={i}>
-                            {item.content.shots[i]?.imageFileId && (
-                              <FilePreview
-                                id={item.content.shots[i].imageFileId}
-                                compact
-                              />
-                            )}
-                            <span>{String(i + 1).padStart(2, "0")}</span>
+                    <FileText size={16} />
+                    查看 Skill
+                  </a>
+                  <a
+                    className="icon-button"
+                    aria-label="下载 Skill 安装包"
+                    href="/skills/ai-video-platform.zip"
+                  >
+                    <Download size={18} />
+                  </a>
+                </section>
+              )}
+              {section === "creative" && (
+                <div className="tabs">
+                  {[
+                    ["concepts", "创意池"],
+                    ["creative-batches", "创意批次"],
+                    ["plans", "策划案"],
+                    ["storyboards", "工业分镜"],
+                  ].map(([id, name]) => (
+                    <button
+                      key={id}
+                      className={route === id ? "active" : ""}
+                      onClick={() => setTab(id)}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {section === "production" && (
+                <div className="tabs">
+                  {[
+                    ["production-batches", "制作批次"],
+                    ["scripts", "制作脚本"],
+                    ["deliverables", "成片交付"],
+                  ].map(([id, name]) => (
+                    <button
+                      key={id}
+                      className={route === id ? "active" : ""}
+                      onClick={() => setTab(id)}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {section === "logs" && (
+                <div className="tabs">
+                  {[
+                    ["jobs", "生成任务"],
+                    ["audit-events", "操作留痕"],
+                  ].map(([id, name]) => (
+                    <button
+                      key={id}
+                      className={route === id ? "active" : ""}
+                      onClick={() => setTab(id)}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="toolbar">
+                {defaults[route] && (
+                  <label className="check-row">
+                    <input
+                      type="checkbox"
+                      checked={showArchived}
+                      onChange={(e) => setShowArchived(e.target.checked)}
+                    />
+                    已归档
+                  </label>
+                )}
+                <div>
+                  <h3>
+                    {section === "products"
+                      ? "全部产品"
+                      : section === "keys"
+                        ? "访问密钥"
+                        : "全部记录"}
+                  </h3>
+                  <span className="count">{filtered.length}</span>
+                </div>
+                <div>
+                  {!["products", "keys", "channels"].includes(section) && (
+                    <select
+                      aria-label="按产品筛选"
+                      value={productId}
+                      onChange={(e) => {
+                        setProductId(e.target.value);
+                        setPlanFilter("");
+                      }}
+                    >
+                      <option value="">全部产品</option>
+                      {products.map((p) => (
+                        <option value={p.id} key={p.id}>
+                          {p.title}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {planFilter && (
+                    <Button onClick={() => setPlanFilter("")}>
+                      策划案筛选 ×
+                    </Button>
+                  )}
+                  <label className="search">
+                    <Search size={16} />
+                    <input
+                      aria-label="搜索"
+                      placeholder="搜索名称…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="icon-button"
+                    aria-label="刷新列表"
+                    onClick={load}
+                  >
+                    <RefreshCw size={16} className={loading ? "spin" : ""} />
+                  </button>
+                </div>
+              </div>
+              {loading && !items.length ? (
+                <div className="loading">
+                  <LoaderCircle className="spin" />
+                  正在加载工作空间…
+                </div>
+              ) : !filtered.length ? (
+                <Empty
+                  title={
+                    section === "products"
+                      ? "建立你的第一个产品"
+                      : section === "keys"
+                        ? "邀请第一个 Agent"
+                        : "这里等待新的创作"
+                  }
+                  body={
+                    section === "products"
+                      ? "整理好产品资料，让创意、资产与视频围绕它生长。"
+                      : "你可以手动创建，也可以让创作搭档帮你完成。"
+                  }
+                  onCreate={
+                    section === "products" && canWrite
+                      ? () => router.push("/studio/products/new")
+                      : section === "keys"
+                        ? () => setKeyEditor({})
+                        : undefined
+                  }
+                />
+              ) : section === "keys" ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>密钥名称</th>
+                        <th>访问权限</th>
+                        <th>产品范围</th>
+                        <th>状态 / 有效期</th>
+                        <th>最近使用</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((k) => (
+                        <tr key={k.id}>
+                          <td>
+                            <b>{k.name}</b>
+                            <code>{k.prefix}••••••••</code>
+                            <small>{k.note}</small>
+                          </td>
+                          <td>
+                            <div className="tags">
+                              {k.scopes.map((s: string) => (
+                                <span key={s}>
+                                  {
+                                    {
+                                      read: "读取",
+                                      write: "编辑",
+                                      generate: "生成",
+                                    }[s]
+                                  }
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td>
+                            {k.productIds.length
+                              ? k.productIds.length + " 个产品"
+                              : "全部产品"}
+                          </td>
+                          <td>
+                            <Badge
+                              status={
+                                !k.enabled
+                                  ? "stopped"
+                                  : k.expiresAt &&
+                                      new Date(k.expiresAt) < new Date()
+                                    ? "archived"
+                                    : "ready"
+                              }
+                            />
+                            <small>
+                              {k.expiresAt ? date(k.expiresAt) : "长期有效"}
+                            </small>
+                          </td>
+                          <td>{date(k.lastUsedAt)}</td>
+                          <td>
+                            <div className="row-actions">
+                              <Button
+                                onClick={() => copyInstructions(k)}
+                                disabled={
+                                  !k.enabled ||
+                                  (!!k.expiresAt &&
+                                    new Date(k.expiresAt) < new Date())
+                                }
+                              >
+                                <Copy size={14} />
+                                接入指令
+                              </Button>
+                              <button
+                                className="icon-button"
+                                aria-label={"编辑 " + k.name}
+                                onClick={() => setKeyEditor(k)}
+                              >
+                                <Settings2 size={16} />
+                              </button>
+                              <button
+                                className="icon-button"
+                                aria-label={"轮换 " + k.name}
+                                onClick={() => keyAction(k, "rotate")}
+                              >
+                                <RefreshCw size={15} />
+                              </button>
+                              <button
+                                className="icon-button danger"
+                                aria-label={"撤销 " + k.name}
+                                onClick={() => keyAction(k, "revoke")}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : section === "channels" ? (
+                <div className="channel-grid">
+                  {filtered.map((c) => (
+                    <article className="channel-card" key={c.id}>
+                      <header>
+                        <span className="channel-logo">
+                          {c.provider === "deepseek" ? "D" : "AI"}
+                        </span>
+                        <Badge status={c.enabled ? "ready" : "stopped"} />
+                      </header>
+                      <h3>{c.name}</h3>
+                      <p className="small muted">{c.baseUrl}</p>
+                      <div className="channel-models">
+                        {Object.entries(c.models).map(([kind, models]: any) => (
+                          <div key={kind}>
+                            <span>
+                              {
+                                (
+                                  {
+                                    text: "文本",
+                                    vision: "识图",
+                                    image: "图片",
+                                    video: "视频",
+                                    audio: "音乐",
+                                  } as Record<string, string>
+                                )[kind]
+                              }
+                            </span>
+                            <p>{models.join(" · ")}</p>
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <div className={"text-cover " + route}>
-                        <span>
-                          {route === "concepts"
-                            ? "THE BIG IDEA"
-                            : route === "plans"
-                              ? "CREATIVE TREATMENT"
-                              : route === "scripts"
-                                ? "PRODUCTION SCRIPT"
-                                : "CREATIVE BATCH"}
-                        </span>
-                        <h3>
-                          {item.content.idea ??
-                            item.content.message ??
-                            item.title}
-                        </h3>
-                        <ArrowUpRight size={24} />
-                      </div>
-                    )}
-                    <div className="card-media-top">
-                      <Badge status={item.status} />
-                      <span className="version">V{item.version}</span>
-                    </div>
-                  </div>
-                  <div className="card-body">
-                    <h3>{item.title}</h3>
-                    <p>
-                      {route === "deliverables" &&
-                        !item.content.sourceJobIds?.length && (
-                          <span className="badge">追溯信息不完整</span>
+                      <footer>
+                        <small>并发上限 {c.concurrency}</small>
+                        {actor?.role === "admin" && (
+                          <Button onClick={() => setChannelEditor(c)}>
+                            <Settings2 size={15} />
+                            配置
+                          </Button>
                         )}
-                      {item.content.description ??
-                        item.content.hook ??
-                        item.content.objective ??
-                        item.content.purpose ??
-                        (item.content.shots
-                          ? item.content.shots.length + " 个镜头"
-                          : "每一步创作都有迹可循")}
-                    </p>
-                    <div className="card-meta">
-                      <span>
-                        <Clock size={13} />
-                        {date(item.updatedAt)}
-                      </span>
-                      <button
-                        className="icon-button"
-                        aria-label="复制对象 ID"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(item.id);
-                          notify("对象 ID 已复制", "success");
-                        }}
-                      >
-                        <Copy size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <footer>
-                    {route === "products" ? (
-                      <>
-                        <button onClick={() => setFiles(item)}>
-                          <FolderOpen size={15} />
-                          产品资料
-                        </button>
-                        <button
-                          onClick={() => {
-                            setProductId(item.id);
-                            navigate("creative", item.id);
-                          }}
-                        >
-                          开始策划
-                          <ArrowUpRight size={15} />
-                        </button>
-                      </>
-                    ) : route === "plans" ? (
-                      <>
-                        <button onClick={() => setEditor({ route, item })}>
-                          {canWrite ? "编辑策划" : "查看策划"}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setProductId(item.productId!);
-                            setPlanFilter(item.id);
-                            setTab("storyboards");
-                          }}
-                        >
-                          查看分镜
-                          <ArrowUpRight size={15} />
-                        </button>
-                      </>
-                    ) : route === "storyboards" ? (
-                      <>
-                        <button onClick={() => setEditor({ route, item })}>
-                          {canWrite ? "编辑分镜表" : "查看分镜表"}
-                        </button>
-                        {canGenerate && (
-                          <button
-                            onClick={() =>
-                              api(
-                                "/storyboards/" + item.id + "/overview",
-                                "POST",
-                                {},
-                              )
-                                .then(() =>
-                                  notify(
-                                    "总览任务已创建，请在日志中查看",
-                                    "success",
-                                  ),
-                                )
-                                .catch((e) => notify(e.message))
+                      </footer>
+                    </article>
+                  ))}
+                </div>
+              ) : route === "production-batches" ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>制作批次</th>
+                        <th>类型</th>
+                        <th>任务数</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((b) => (
+                        <tr key={b.id}>
+                          <td>
+                            <b>{b.title}</b>
+                            <small>
+                              {
+                                products.find((p) => p.id === b.productId)
+                                  ?.title
+                              }
+                            </small>
+                          </td>
+                          <td>
+                            {
+                              (
+                                {
+                                  image: "图片",
+                                  video: "视频",
+                                  audio: "音乐",
+                                } as Record<string, string>
+                              )[b.kind]
                             }
-                          >
-                            拼接总览
-                            <Grid2X2 size={15} />
-                          </button>
+                          </td>
+                          <td>{b.jobs?.length || b.snapshot.entries.length}</td>
+                          <td>
+                            <Badge status={b.status} />
+                          </td>
+                          <td>{date(b.createdAt)}</td>
+                          <td>
+                            <Button onClick={() => openDetail(b)}>
+                              {b.status === "pending_approval"
+                                ? "查看审批"
+                                : "查看结果"}
+                              <ArrowUpRight size={15} />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : section === "logs" ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{route === "jobs" ? "任务" : "操作"}</th>
+                        <th>状态 / 身份</th>
+                        <th>时间</th>
+                        <th>说明</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((i) => (
+                        <tr key={i.id}>
+                          <td>
+                            <b>
+                              {i.action ??
+                                (
+                                  {
+                                    image: "图片生成",
+                                    video: "视频生成",
+                                    audio: "音乐生成",
+                                    parse: "资料解析",
+                                    overview: "分镜总览",
+                                  } as any
+                                )[i.kind]}
+                            </b>
+                            <code>{i.id.slice(0, 16)}…</code>
+                          </td>
+                          <td>
+                            {i.status ? (
+                              <Badge status={i.status} />
+                            ) : (
+                              i.actorType
+                            )}
+                          </td>
+                          <td>{date(i.createdAt)}</td>
+                          <td className="truncate">
+                            {i.error ?? i.actualChannel ?? i.entityId ?? "—"}
+                          </td>
+                          <td>
+                            <Button
+                              onClick={() =>
+                                route === "jobs" ? openDetail(i) : setDetail(i)
+                              }
+                            >
+                              详情
+                              <ArrowUpRight size={14} />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div
+                  className={
+                    "resource-grid " +
+                    (section === "products" ? "product-grid" : "")
+                  }
+                >
+                  {filtered.map((item: Item) => (
+                    <article key={item.id} className="resource-card">
+                      <div
+                        className="card-media"
+                        onClick={() =>
+                          route === "products"
+                            ? router.push(`/studio/products/${item.id}`)
+                            : setEditor({ route, item })
+                        }
+                      >
+                        {route === "products" ||
+                        route === "assets" ||
+                        route === "deliverables" ? (
+                          <FilePreview
+                            id={
+                              item.content.coverFileId ??
+                              item.content.selectedFileId ??
+                              item.content.fileId
+                            }
+                            compact
+                          />
+                        ) : route === "storyboards" ? (
+                          <div className="board-mini">
+                            {Array.from({ length: 9 }, (_, i) => (
+                              <div key={i}>
+                                {item.content.shots[i]?.imageFileId && (
+                                  <FilePreview
+                                    id={item.content.shots[i].imageFileId}
+                                    compact
+                                  />
+                                )}
+                                <span>{String(i + 1).padStart(2, "0")}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className={"text-cover " + route}>
+                            <span>
+                              {route === "concepts"
+                                ? "THE BIG IDEA"
+                                : route === "plans"
+                                  ? "CREATIVE TREATMENT"
+                                  : route === "scripts"
+                                    ? "PRODUCTION SCRIPT"
+                                    : "CREATIVE BATCH"}
+                            </span>
+                            <h3>
+                              {item.content.idea ??
+                                item.content.message ??
+                                item.title}
+                            </h3>
+                            <ArrowUpRight size={24} />
+                          </div>
                         )}
-                      </>
-                    ) : (
-                      <>
-                        <button onClick={() => setEditor({ route, item })}>
-                          {canWrite ? "查看与编辑" : "查看详情"}
-                          <ArrowUpRight size={15} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setProductId(item.productId ?? item.id);
-                            setChat(true);
-                          }}
-                        >
-                          <Sparkles size={15} />
-                          AI 协作
-                        </button>
-                      </>
-                    )}
-                  </footer>
-                </article>
-              ))}
-            </div>
-          )}
-          {defaults[route] && total > 30 && (
-            <div className="section-line" aria-label="列表分页">
-              <span>
-                共 {total} 条 · 第 {page} / {Math.max(1, Math.ceil(total / 30))}{" "}
-                页
-              </span>
-              <div className="row-actions">
-                <Button
-                  disabled={page <= 1 || loading}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  上一页
-                </Button>
-                <Button
-                  disabled={page * 30 >= total || loading}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  下一页
-                </Button>
-              </div>
-            </div>
+                        <div className="card-media-top">
+                          <Badge status={item.status} />
+                          <span className="version">V{item.version}</span>
+                        </div>
+                      </div>
+                      <div className="card-body">
+                        <h3>
+                          {route === "products" ? (
+                            <button
+                              className="pd-card-title"
+                              onClick={() =>
+                                router.push(`/studio/products/${item.id}`)
+                              }
+                            >
+                              {item.title}
+                            </button>
+                          ) : (
+                            item.title
+                          )}
+                        </h3>
+                        <p>
+                          {route === "deliverables" &&
+                            !item.content.sourceJobIds?.length && (
+                              <span className="badge">追溯信息不完整</span>
+                            )}
+                          {item.content.description ??
+                            item.content.hook ??
+                            item.content.objective ??
+                            item.content.purpose ??
+                            (item.content.shots
+                              ? item.content.shots.length + " 个镜头"
+                              : "每一步创作都有迹可循")}
+                        </p>
+                        <div className="card-meta">
+                          <span>
+                            <Clock size={13} />
+                            {date(item.updatedAt)}
+                          </span>
+                          <button
+                            className="icon-button"
+                            aria-label="复制对象 ID"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(item.id);
+                              notify("对象 ID 已复制", "success");
+                            }}
+                          >
+                            <Copy size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <footer>
+                        {route === "products" ? (
+                          <>
+                            <button
+                              onClick={() =>
+                                router.push(`/studio/products/${item.id}`)
+                              }
+                            >
+                              <FolderOpen size={15} />
+                              产品资料
+                            </button>
+                            <button
+                              onClick={() => {
+                                setProductId(item.id);
+                                navigate("creative", item.id);
+                              }}
+                            >
+                              开始策划
+                              <ArrowUpRight size={15} />
+                            </button>
+                          </>
+                        ) : route === "plans" ? (
+                          <>
+                            <button onClick={() => setEditor({ route, item })}>
+                              {canWrite ? "编辑策划" : "查看策划"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setProductId(item.productId!);
+                                setPlanFilter(item.id);
+                                setTab("storyboards");
+                              }}
+                            >
+                              查看分镜
+                              <ArrowUpRight size={15} />
+                            </button>
+                          </>
+                        ) : route === "storyboards" ? (
+                          <>
+                            <button onClick={() => setEditor({ route, item })}>
+                              {canWrite ? "编辑分镜表" : "查看分镜表"}
+                            </button>
+                            {canGenerate && (
+                              <button
+                                onClick={() =>
+                                  api(
+                                    "/storyboards/" + item.id + "/overview",
+                                    "POST",
+                                    {},
+                                  )
+                                    .then(() =>
+                                      notify(
+                                        "总览任务已创建，请在日志中查看",
+                                        "success",
+                                      ),
+                                    )
+                                    .catch((e) => notify(e.message))
+                                }
+                              >
+                                拼接总览
+                                <Grid2X2 size={15} />
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => setEditor({ route, item })}>
+                              {canWrite ? "查看与编辑" : "查看详情"}
+                              <ArrowUpRight size={15} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setProductId(item.productId ?? item.id);
+                                setChat(true);
+                              }}
+                            >
+                              <Sparkles size={15} />
+                              AI 协作
+                            </button>
+                          </>
+                        )}
+                      </footer>
+                    </article>
+                  ))}
+                </div>
+              )}
+              {defaults[route] && total > 30 && (
+                <div className="section-line" aria-label="列表分页">
+                  <span>
+                    共 {total} 条 · 第 {page} /{" "}
+                    {Math.max(1, Math.ceil(total / 30))} 页
+                  </span>
+                  <div className="row-actions">
+                    <Button
+                      disabled={page <= 1 || loading}
+                      onClick={() => setPage((p) => p - 1)}
+                    >
+                      上一页
+                    </Button>
+                    <Button
+                      disabled={page * 30 >= total || loading}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      下一页
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
           <footer className="page-footer">
             <span>FRAMEFLOW · CREATE WITH INTENTION</span>
@@ -2895,10 +2826,17 @@ export default function Workspace() {
       {chat && (
         <ChatPanel
           readOnly={!canWrite}
-          productId={productId || undefined}
+          productId={
+            productDetailId === "new"
+              ? undefined
+              : productDetailId || productId || undefined
+          }
           planId={planFilter || undefined}
           onClose={() => setChat(false)}
-          onChanged={load}
+          onChanged={() => {
+            void load();
+            window.dispatchEvent(new Event("product-updated"));
+          }}
           notify={notify}
         />
       )}
@@ -2971,17 +2909,6 @@ export default function Workspace() {
             void load();
           }}
           notify={notify}
-        />
-      )}
-      {files && (
-        <FilesDialog
-          product={files}
-          readOnly={!canWrite}
-          notify={notify}
-          onClose={() => {
-            setFiles(null);
-            void load();
-          }}
         />
       )}
       {instructions && (

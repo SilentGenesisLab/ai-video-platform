@@ -1,4 +1,4 @@
-# API reference notes · v1.0.0
+# API reference notes · v1.1.0
 
 All business endpoints start with `/api/v1`. Use JSON request bodies, Bearer authentication, and an 8–200 character `Idempotency-Key` header on creation requests. Collection reads return `{items, total?, page?, limit?}`. Resource updates use PATCH and include `baseVersion`.
 

@@ -75,3 +75,19 @@
 - [AI Centre API 文档](https://aicentre2.sligenai.cn:8443/api-docs.md)
 - [DeepSeek 识图接口](https://api-docs.deepseek.com/guides/vision/)
 - [DeepSeek Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode/)
+
+
+## 产品洞察工作台（2026-10-12）
+
+产品资料改为 `/studio/products/{id}`，新建入口为 `/studio/products/new`。五个标签共享草稿，URL 支持深链接及前进后退；离开时提示未保存内容。卖点、人群、用户原话、事实与假设和问题清单支持卡片编辑与排序。Brief 使用安全 Markdown 实时预览；素材分类、封面、参考视频、版本历史和并发修改合并均保留在产品修订中。
+
+本轮本地验收：
+
+- 38 项原有 API 集成检查、17 项新增产品洞察检查通过；包含旧产品只读适配、不丢字段的部分更新、409 冲突、权限、跨产品文件引用、105 个文件分页，以及参考视频跳过解析且完成上传幂等。
+- 11 项单元测试通过；公开 Skill 1.1.0 下载、安装及只读连接验证通过，不创建生成任务。
+- 浏览器回归累计 21 个场景通过，1 个需主动启用的真实 Agent 场景跳过。归档选择器修复后单独复测通过；新增的 2 个工作台场景再次通过，覆盖桌面/手机、历史、恶意 Markdown、部分上传失败重试、封面、播放和三方合并。
+- 上传使用真实 OSS。独立测试库停用了文本识图渠道，静音 MP4 不触发转写；没有调用付费媒体生成。测试与生产数据库隔离。
+
+复现：先启动测试数据库、Redis、网站及 Worker，配置私有 `.env`，运行 `npm test`、`npm run test:integration`、`npx tsx --env-file=.env tests/product-insights-integration.ts`、`npm run test:browser` 和 `npx tsx --env-file=.env tests/skill-install.ts`。新增 MP4 固定样本位于 `tests/fixtures/reference.mp4`，由 FFmpeg 合成静音色块，无第三方素材。完整 API 检查会写入隔离测试库，不能针对生产库运行。
+
+生产仅运行 `PRODUCTION_SMOKE=1 npx playwright test tests/product-insights.browser.spec.ts --grep @production`，创建可归档的验收产品，不上传待解析素材，不调用媒体生成；生产验证记录在发布后补充。浏览器原始报告与截图留在私有运行目录，不进入公开仓库。
