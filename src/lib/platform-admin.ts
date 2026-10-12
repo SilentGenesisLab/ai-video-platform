@@ -238,9 +238,19 @@ export async function adminRoute(
       const teams = await db.team.findMany({
         where: { id: { in: memberships.map((m) => m.teamId) } },
       });
+      const createdTeams = await db.team.findMany({
+        where: { createdBy: action },
+      });
+      const wallets = await db.wallet.findMany({
+        where: { teamId: { in: createdTeams.map((t) => t.id) } },
+      });
       return {
         ...user,
         wallet: await db.userWallet.findUnique({ where: { userId: action } }),
+        createdTeams: createdTeams.map((t) => ({
+          ...t,
+          wallet: wallets.find((w) => w.teamId === t.id),
+        })),
         teams: memberships.map((m) => ({
           ...m,
           name: teams.find((t) => t.id === m.teamId)?.name,

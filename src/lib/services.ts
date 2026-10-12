@@ -469,6 +469,52 @@ export async function listResources(
       ? { title: { contains: params.get("q")!, mode: "insensitive" } }
       : {}),
   };
+  if (kind === "concept") {
+    const sort = z
+      .enum(["time-desc", "time-asc", "score-desc", "score-asc"])
+      .parse(params.get("sort") ?? "time-desc");
+    const rating = z
+      .enum(["all", "scored", "unscored", "high", "medium", "low"])
+      .parse(params.get("rating") ?? "all");
+    const score = Prisma.sql`CASE WHEN jsonb_typeof(content->'score') = 'number' THEN (content->>'score')::numeric ELSE NULL END`;
+    const status = params.get("status");
+    if (status)
+      z.enum(["draft", "selected", "rejected", "ready", "archived"]).parse(
+        status,
+      );
+    const filters = Prisma.sql`kind = 'concept' AND "teamId" = ${actor.teamId}
+      AND ${actor.productIds.length ? Prisma.sql`"productId" IN (${Prisma.join(actor.productIds)})` : Prisma.sql`TRUE`}
+      AND ${params.get("productId") ? Prisma.sql`"productId" = ${params.get("productId")}` : Prisma.sql`TRUE`}
+      AND ${params.get("parentId") ? Prisma.sql`"parentId" = ${params.get("parentId")}` : Prisma.sql`TRUE`}
+      AND ${status ? Prisma.sql`status = ${status}` : Prisma.sql`status <> 'archived'`}
+      AND ${params.get("q") ? Prisma.sql`strpos(lower(title), lower(${params.get("q")})) > 0` : Prisma.sql`TRUE`}
+      AND ${rating === "unscored" ? Prisma.sql`${score} IS NULL` : rating === "scored" ? Prisma.sql`${score} IS NOT NULL` : rating === "high" ? Prisma.sql`${score} >= 8` : rating === "medium" ? Prisma.sql`${score} >= 6 AND ${score} < 8` : rating === "low" ? Prisma.sql`${score} < 6` : Prisma.sql`TRUE`}`;
+    const order =
+      sort === "score-desc"
+        ? Prisma.sql`${score} DESC NULLS LAST`
+        : sort === "score-asc"
+          ? Prisma.sql`${score} ASC NULLS LAST`
+          : sort === "time-asc"
+            ? Prisma.sql`"createdAt" ASC`
+            : Prisma.sql`"createdAt" DESC`;
+    const [ids, count] = await Promise.all([
+      db.$queryRaw<
+        Array<{ id: string }>
+      >`SELECT id FROM "Resource" WHERE ${filters} ORDER BY ${order}, id ASC LIMIT ${limit} OFFSET ${(page - 1) * limit}`,
+      db.$queryRaw<
+        Array<{ total: bigint }>
+      >`SELECT count(*) AS total FROM "Resource" WHERE ${filters}`,
+    ]);
+    const found = await db.resource.findMany({
+      where: { ...where, id: { in: ids.map((i) => i.id) } },
+    });
+    return {
+      items: ids.map((i) => found.find((r) => r.id === i.id)).filter(Boolean),
+      total: Number(count[0].total),
+      page,
+      limit,
+    };
+  }
   const [items, total] = await Promise.all([
     db.resource.findMany({
       where,

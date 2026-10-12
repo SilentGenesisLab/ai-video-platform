@@ -1,6 +1,57 @@
 .admin-console .team-layout {
   max-width: 1600px;
 }
+.admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.admin-actions .button {
+  margin: 0;
+}
+.admin-user-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  margin: auto;
+  border: 1px solid #dce6d6;
+  border-radius: 22px;
+  background: #fcfdf9f5;
+  color: #223b2d;
+  box-shadow: 0 32px 100px #122b2340;
+  backdrop-filter: blur(24px);
+}
+.admin-user-dialog::backdrop {
+  background: #10271e70;
+  backdrop-filter: blur(5px);
+}
+.admin-dialog-body {
+  padding: 32px;
+  position: relative;
+}
+.admin-dialog-close {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+}
+.admin-user-dialog h2 {
+  padding-right: 35px;
+}
+.admin-user-dialog .team-table {
+  max-width: 100%;
+  overflow: auto;
+}
+html[data-studio-theme="dark"] .admin-user-dialog {
+  background: #20382ff5;
+  color: #e5eee3;
+  border-color: #3b5547;
+}
+@media (max-width: 560px) {
+  .admin-dialog-body {
+    padding: 24px 16px;
+  }
+}
 .admin-console .overview-stats {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

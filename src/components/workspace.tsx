@@ -1422,11 +1422,29 @@ export default function Workspace() {
   const loadSequence = useRef(0);
   const [itemsRoute, setItemsRoute] = useState(route);
   const [showArchived, setShowArchived] = useState(false);
+  const [conceptStatus, setConceptStatus] = useState(""),
+    [conceptRating, setConceptRating] = useState("all"),
+    [conceptSort, setConceptSort] = useState("time-desc");
+  const [conceptAction, setConceptAction] = useState<{
+      item: Item;
+      kind: "score" | "delete" | "restore";
+    } | null>(null),
+    [conceptBusy, setConceptBusy] = useState(false),
+    [scoreValue, setScoreValue] = useState("");
   const [page, setPage] = useState(1),
     [total, setTotal] = useState(0);
   useEffect(
     () => setPage(1),
-    [route, productId, planFilter, search, showArchived],
+    [
+      route,
+      productId,
+      planFilter,
+      search,
+      showArchived,
+      conceptStatus,
+      conceptRating,
+      conceptSort,
+    ],
   );
   const load = useCallback(async () => {
     const seq = ++loadSequence.current;
@@ -1444,6 +1462,12 @@ export default function Workspace() {
         query.set("page", String(page));
         query.set("limit", "30");
         if (search) query.set("q", search);
+        if (route === "concepts") {
+          query.set("sort", conceptSort);
+          query.set("rating", conceptRating);
+          if (!showArchived && conceptStatus)
+            query.set("status", conceptStatus);
+        }
         if (
           planFilter &&
           ["storyboards", "assets", "scripts", "deliverables"].includes(route)
@@ -1471,7 +1495,18 @@ export default function Workspace() {
     } finally {
       if (seq === loadSequence.current) setLoading(false);
     }
-  }, [route, productId, notify, showArchived, search, planFilter, page]);
+  }, [
+    route,
+    productId,
+    notify,
+    showArchived,
+    search,
+    planFilter,
+    page,
+    conceptStatus,
+    conceptRating,
+    conceptSort,
+  ]);
   useEffect(() => {
     const query = new URLSearchParams(window.location.search),
       id = query.get("id"),
@@ -1532,6 +1567,47 @@ export default function Workspace() {
   }, [productDetailId]);
   const canWrite = actor?.scopes?.includes("write"),
     canGenerate = actor?.scopes?.includes("generate");
+  async function applyConceptAction() {
+    if (!conceptAction || !canWrite || conceptBusy) return;
+    setConceptBusy(true);
+    const { item, kind } = conceptAction;
+    try {
+      const content = { ...item.content };
+      if (kind === "score") {
+        if (scoreValue === "") delete content.score;
+        else content.score = Number(scoreValue);
+      }
+      await api("/concepts/" + item.id, "PATCH", {
+        title: item.title,
+        productId: item.productId,
+        ...(item.parentId ? { parentId: item.parentId } : {}),
+        ...(item.planId ? { planId: item.planId } : {}),
+        status:
+          kind === "delete"
+            ? "archived"
+            : kind === "restore"
+              ? "draft"
+              : item.status,
+        content,
+        baseVersion: item.version,
+      });
+      setConceptAction(null);
+      notify(
+        kind === "score"
+          ? "评分已保存"
+          : kind === "delete"
+            ? "创意已删除，可在已归档中恢复"
+            : "创意已恢复",
+        "success",
+      );
+      if (kind !== "score" && items.length === 1 && page > 1) setPage(page - 1);
+      else await load();
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setConceptBusy(false);
+    }
+  }
   function navigate(id: string, selectedProduct = productId) {
     if (!confirmLeaveProduct()) return;
     setItems([]);
@@ -2047,6 +2123,68 @@ export default function Workspace() {
                   </button>
                 </div>
               </div>
+              {route === "concepts" && (
+                <div className="concept-filters" aria-label="创意筛选与排序">
+                  <label>
+                    状态
+                    <Select
+                      aria-label="创意状态筛选"
+                      value={showArchived ? "archived" : conceptStatus}
+                      disabled={showArchived}
+                      onChange={(e) => setConceptStatus(e.target.value)}
+                    >
+                      <option value="">全部状态</option>
+                      <option value="draft">草稿</option>
+                      <option value="selected">已入选</option>
+                      <option value="rejected">已淘汰</option>
+                      <option value="ready">已就绪</option>
+                      {showArchived && <option value="archived">已归档</option>}
+                    </Select>
+                  </label>
+                  <label>
+                    评分
+                    <Select
+                      aria-label="创意评分筛选"
+                      value={conceptRating}
+                      onChange={(e) => setConceptRating(e.target.value)}
+                    >
+                      <option value="all">全部评分</option>
+                      <option value="unscored">未评分</option>
+                      <option value="scored">已评分</option>
+                      <option value="high">8–10 分</option>
+                      <option value="medium">6–8 分（不含 8）</option>
+                      <option value="low">低于 6 分</option>
+                    </Select>
+                  </label>
+                  <label>
+                    排序
+                    <Select
+                      aria-label="创意排序"
+                      value={conceptSort}
+                      onChange={(e) => setConceptSort(e.target.value)}
+                    >
+                      <option value="time-desc">创建时间：新到旧</option>
+                      <option value="time-asc">创建时间：旧到新</option>
+                      <option value="score-desc">评分：高到低</option>
+                      <option value="score-asc">评分：低到高</option>
+                    </Select>
+                  </label>
+                  <Button
+                    onClick={() => {
+                      setConceptStatus("");
+                      setConceptRating("all");
+                      setConceptSort("time-desc");
+                      setShowArchived(false);
+                      setSearch("");
+                    }}
+                  >
+                    重置筛选
+                  </Button>
+                  <small>
+                    共 {total} 条符合条件 · 未评分始终排在评分排序末尾
+                  </small>
+                </div>
+              )}
               {loading && !items.length ? (
                 <div className="loading">
                   <LoaderCircle className="spin" />
@@ -2470,15 +2608,31 @@ export default function Workspace() {
                         <div className="card-meta">
                           <span>
                             <Clock size={13} />
-                            {date(item.updatedAt)}
+                            {date(
+                              route === "concepts"
+                                ? item.createdAt
+                                : item.updatedAt,
+                            )}
                           </span>
                           {route === "concepts" && (
-                            <span className="concept-score">
+                            <button
+                              className="concept-score"
+                              disabled={!canWrite}
+                              aria-label={"评分：" + item.title}
+                              onClick={() => {
+                                setScoreValue(
+                                  item.content.score === undefined
+                                    ? ""
+                                    : String(item.content.score),
+                                );
+                                setConceptAction({ item, kind: "score" });
+                              }}
+                            >
                               评分{" "}
                               {item.content.score === undefined
                                 ? "待评分"
                                 : `${item.content.score} / 10`}
-                            </span>
+                            </button>
                           )}
                           <button
                             className="icon-button"
@@ -2493,6 +2647,28 @@ export default function Workspace() {
                         </div>
                       </div>
                       <footer>
+                        {route === "concepts" && canWrite && (
+                          <button
+                            className="concept-delete"
+                            aria-label={
+                              (item.status === "archived"
+                                ? "恢复创意："
+                                : "删除创意：") + item.title
+                            }
+                            onClick={() =>
+                              setConceptAction({
+                                item,
+                                kind:
+                                  item.status === "archived"
+                                    ? "restore"
+                                    : "delete",
+                              })
+                            }
+                          >
+                            <Trash2 size={14} />
+                            {item.status === "archived" ? "恢复" : "删除"}
+                          </button>
+                        )}
                         {route === "products" ? (
                           <>
                             <button
@@ -2646,6 +2822,74 @@ export default function Workspace() {
           }}
           notify={notify}
         />
+      )}
+      {conceptAction && (
+        <Modal
+          title={
+            conceptAction.kind === "score"
+              ? "创意评分"
+              : conceptAction.kind === "delete"
+                ? "删除创意"
+                : "恢复创意"
+          }
+          onClose={() => {
+            if (!conceptBusy) setConceptAction(null);
+          }}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void applyConceptAction();
+            }}
+          >
+            <div className="concept-action-body">
+              <h3>{conceptAction.item.title}</h3>
+              {conceptAction.kind === "score" ? (
+                <label>
+                  人工评分（0–10）
+                  <input
+                    aria-label="人工评分（0–10）"
+                    type="number"
+                    min="0"
+                    max="10"
+                    step="0.1"
+                    value={scoreValue}
+                    placeholder="留空清除评分"
+                    onChange={(e) => setScoreValue(e.target.value)}
+                    autoFocus
+                  />
+                </label>
+              ) : (
+                <p>
+                  {conceptAction.kind === "delete"
+                    ? "删除后移入已归档，可随时恢复。历史版本和已关联策划案保留。"
+                    : "恢复后回到草稿状态，历史版本继续保留。"}
+                </p>
+              )}
+            </div>
+            <div className="modal-actions">
+              <Button
+                disabled={conceptBusy}
+                onClick={() => setConceptAction(null)}
+              >
+                取消
+              </Button>
+              <button
+                className="button dark"
+                type="submit"
+                disabled={conceptBusy}
+              >
+                {conceptBusy
+                  ? "保存中…"
+                  : conceptAction.kind === "score"
+                    ? "保存评分"
+                    : conceptAction.kind === "delete"
+                      ? "确认删除"
+                      : "确认恢复"}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
       {keyEditor && (
         <KeyEditor
