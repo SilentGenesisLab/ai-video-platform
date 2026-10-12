@@ -8,4 +8,15 @@
 
 接口 POST /api/v1/concepts/score-unscored，参数可选 productId，要求人类登录、write 和 generate；GET /api/v1/jobs/{id} 查看进度。公共接口契约提供详细字段。
 
-回归发现旧 PDF 解析内核无法读取现有 MuPDF fixture；切换至依赖已包含的 v2.0.550 内核，保留页码与扫描件 OCR 提示。
+回归发现 PDF 解析对共享 Buffer 视图存在兼容问题；传入独立 Uint8Array 并使用依赖已包含的 v2.0.550 内核，验证保留页码与扫描件 OCR 提示。
+
+
+## 验收与部署记录
+
+- 2026-10-13：45 个单元测试、10 个 Python Agent 测试、38 项 HTTP 集成验收通过。
+- 本地 Playwright 12 项助手/创意回归、1 项后台布局与模块回归通过。真实 DeepSeek 验证标题、流式增量、选中创意修改和批量五维评分；人工0分保持原版本，个人余额不变。
+- 部署版本 1.4.3，代码提交 18c7d1d8b666a2e247a93b82c552d4c3b18cd939，web/worker/agent 三服务使用独立镜像 v1.4.3-18c7d1d，HTTPS 健康检查正常。
+- 备份 /opt/ai-video-platform/backups/pre-v1.4.3-18c7d1d，保留数据库自定义格式 dump、旧环境配置、旧来源归档和旧镜像。部署使用互斥锁及失败回滚。
+- 媒体卡片使用模拟任务验证；本轮不发起付费图片/视频生成。生产批量评分不修改真实团队创意，真实评分在隔离本地产品中验收。
+
+- 生产 HTTPS Playwright 真实 DeepSeek 验收通过：登录、自动标题事件、正文多次增量、刷新恢复及免费积分余额一致。
