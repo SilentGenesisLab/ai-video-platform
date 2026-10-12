@@ -9,7 +9,31 @@ import {
   routes,
 } from "./contracts";
 export function openapi() {
-  const paths: Record<string, unknown> = {};
+  const paths: Record<string, unknown> = {
+    "/api/v1/concepts/score-unscored": {
+      post: {
+        summary:
+          "Score all unscored concepts asynchronously (human write + generate). Existing scores including zero are preserved. Optional productId limits the scope; no pagination limit.",
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { productId: { type: "string", format: "uuid" } },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description:
+              "Durable scoring job; GET /jobs/{id} returns progress, skipped and failed results",
+          },
+          "409": { description: "Another scoring job is active" },
+        },
+      },
+    },
+  };
   const response = {
     description: "Success",
     content: { "application/json": { schema: { type: "object" } } },
@@ -726,7 +750,7 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.4.2",
+      version: "1.4.3",
       description:
         "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
     },

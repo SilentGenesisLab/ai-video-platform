@@ -13,6 +13,7 @@ export async function recordRunEvent(
   const e = z
     .object({
       type: z.enum([
+        "title",
         "heartbeat",
         "tool",
         "tool_start",
@@ -95,7 +96,24 @@ export async function recordRunEvent(
     if (await tx.agentEvent.findUnique({ where: { eventKey: key } }))
       return { duplicate: true, conversationId: run.conversationId };
     let data: any = { ...e, runId: id };
-    if (e.type === "message_start") {
+    if (e.type === "title") {
+      const first = await tx.message.findFirst({
+        where: { conversationId: run.conversationId, role: "user" },
+        orderBy: { createdAt: "asc" },
+      });
+      assert(first?.runId === id, 409, "仅首次请求可生成标题");
+      const title = e.text?.trim().slice(0, 40);
+      assert(title, 422, "标题不能为空");
+      const prior = await tx.agentEvent.findFirst({
+        where: { conversationId: run.conversationId, type: "title" },
+      });
+      if (!prior)
+        await tx.conversation.update({
+          where: { id: run.conversationId },
+          data: { title },
+        });
+      data = { ...data, title };
+    } else if (e.type === "message_start") {
       assert(e.messageId, 422, "缺少消息标识");
       await tx.message.create({
         data: {

@@ -400,7 +400,7 @@ function ContentFields({ content, setContent }: any) {
   return (
     <>
       {Object.entries(content)
-        .filter(([k]) => k !== "shots")
+        .filter(([k]) => k !== "shots" && k !== "evaluation")
         .map(([key, value]) => (
           <div
             key={key}
@@ -1570,6 +1570,8 @@ export default function Workspace() {
     [keyEditor, setKeyEditor] = useState<any>(null),
     [channelEditor, setChannelEditor] = useState<any>(null),
     [generation, setGeneration] = useState(false),
+    [scoringJob, setScoringJob] = useState<any>(null),
+    [scoringBusy, setScoringBusy] = useState(false),
     [detail, setDetail] = useState<any>(null),
     [toast, setToast] = useState<{ text: string; kind: string } | null>(null),
     [members, setMembers] = useState<any[] | null>(null),
@@ -1599,6 +1601,32 @@ export default function Workspace() {
                   ? "audit-events"
                   : "jobs";
   const loadSequence = useRef(0);
+  useEffect(() => {
+    const saved = sessionStorage.getItem("concept-scoring-job");
+    if (saved) setScoringJob({ id: saved, status: "running" });
+  }, []);
+  useEffect(() => {
+    if (!scoringJob || !["queued", "running"].includes(scoringJob.status))
+      return;
+    const timer = setInterval(() => {
+      void api("/jobs/" + scoringJob.id)
+        .then((job) => {
+          setScoringJob(job);
+          if (!["queued", "running"].includes(job.status)) {
+            sessionStorage.removeItem("concept-scoring-job");
+            void load();
+            notify(
+              job.status === "succeeded"
+                ? "创意评分完成，可查看维度与理由"
+                : job.error || "评分已停止",
+              job.status === "succeeded" ? "success" : "error",
+            );
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [scoringJob?.id, scoringJob?.status]);
   const [itemsRoute, setItemsRoute] = useState(route);
   const [showArchived, setShowArchived] = useState(false);
   const [page, setPage] = useState(1),
@@ -1976,6 +2004,41 @@ export default function Workspace() {
                             提交制作
                           </Button>
                         )}
+                      {route === "concepts" && canWrite && canGenerate && (
+                        <Button
+                          disabled={
+                            scoringBusy ||
+                            ["queued", "running"].includes(scoringJob?.status)
+                          }
+                          onClick={async () => {
+                            setScoringBusy(true);
+                            try {
+                              const job = await api(
+                                "/concepts/score-unscored",
+                                "POST",
+                                productId ? { productId } : {},
+                              );
+                              setScoringJob(job);
+                              sessionStorage.setItem(
+                                "concept-scoring-job",
+                                job.id,
+                              );
+                              notify(
+                                `已提交 ${job.result.total} 条未评分创意；已有评分会保留`,
+                                "success",
+                              );
+                            } catch (e) {
+                              notify((e as Error).message);
+                            } finally {
+                              setScoringBusy(false);
+                            }
+                          }}
+                        >
+                          {["queued", "running"].includes(scoringJob?.status)
+                            ? `评分中 ${scoringJob.result?.items?.length ?? 0}/${scoringJob.result?.total ?? "…"}`
+                            : "一键评分未评分创意"}
+                        </Button>
+                      )}
                       {canWrite && (
                         <Button
                           primary
@@ -2639,12 +2702,41 @@ export default function Workspace() {
                             {date(item.updatedAt)}
                           </span>
                           {route === "concepts" && (
-                            <span className="concept-score">
+                            <span
+                              title={item.content.evaluation?.dimensions
+                                ?.map(
+                                  (d: any) =>
+                                    `${d.label} (${d.weight * 100}%): ${d.score} — ${d.reason}`,
+                                )
+                                .join("\n")}
+                              className="concept-score"
+                            >
                               评分{" "}
                               {item.content.score === undefined
                                 ? "待评分"
                                 : `${item.content.score} / 10`}
                             </span>
+                          )}
+                          {route === "concepts" && item.content.evaluation && (
+                            <details>
+                              <summary>评分依据</summary>
+                              {item.content.evaluation.dimensions.map(
+                                (d: any) => (
+                                  <p key={d.key}>
+                                    <strong>
+                                      {d.label} {d.score}/10 ·{" "}
+                                      {Math.round(d.weight * 100)}%
+                                    </strong>
+                                    <br />
+                                    {d.reason}
+                                  </p>
+                                ),
+                              )}
+                              <small>
+                                AI 评估，非转化率预测 · 源版本 V
+                                {item.content.evaluation.sourceVersion}
+                              </small>
+                            </details>
                           )}
                           <button
                             className="icon-button"

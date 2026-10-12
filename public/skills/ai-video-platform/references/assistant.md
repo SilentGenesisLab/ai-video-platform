@@ -1,4 +1,4 @@
-# Assistant API (1.4.2)
+# Assistant API (1.4.3)
 
 Authenticate with the private AIVIDEO_API_KEY. Never include credentials in URLs or logs.
 
@@ -29,3 +29,5 @@ All attachments, analyses, streams and searches belong to the Key’s fixed team
 POST `/conversations/{id}/messages` accepts `referenceIds` (at most 10 resource UUIDs). The server checks access and product scope and saves original content/version in `contextRefs`. Edit these selected resources, read their latest versions and PATCH with baseVersion; do not create copies unless asked.
 
 Use POST `/tools/generate-media` with kind (image/video), productId and prompt, optionally count, planId, parameters, referenceFileIds and targetResourceId. The server selects an enabled channel/model and records a quote. Explicit requests to generate images authorize immediate generation without further channel/price questions. Video remains pending human approval. Preserve Idempotency-Key on retries. Query `/conversations/{id}/media` for internal Agent batches, placeholders and signed result URLs; no generation is triggered by reads.
+
+首次用户请求生成持久化 AI 标题，通过 SSE title 事件更新会话；文本标题与评分均不消耗积分。批量评分入口只对人类登录开放，POST /api/v1/concepts/score-unscored 可按 productId 范围提交，GET /jobs/{id} 查看结果，已有评分（含0分）不覆盖。
