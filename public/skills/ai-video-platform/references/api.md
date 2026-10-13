@@ -80,3 +80,7 @@ const result = await platform("/production-batches", "POST", {
 API keys cannot use `/teams`, `/invitations`, `/platform`, phone binding, human approvals or key management. The website's team switch does not change your key's team. `auth/me` includes `teamId`, `teamName`, `teamRole`, `scopes` and product boundaries. Capture that context before using existing object IDs.
 
 `GET /api/v1/billing/usage` 返回个人跨团队用量及 `teamId`、`payerKind`、`payerUserId`、`rateId` 和不可变 `quoteLine`；Agent Key 只能查看自身团队中的个人用量。
+
+## Delete and restore
+
+`DELETE /{collection}/{id}` (or `/resources/{id}`) accepts `{ "baseVersion": 1 }` and requires an `Idempotency-Key`. Supported collections: products, creative-batches, concepts, plans, storyboards, assets, scripts, deliverables. The applicable module write permission and product scope are checked on every request, including replays. Deletion archives only the selected object, adds an immutable revision and audit event, and retains files, sources, downstream objects and running tasks. Stale versions return 409. Read archived objects with `status=archived`; restore through PATCH with the latest baseVersion, preserved content and an active status. Do not issue cascading deletes unless the human explicitly requests them.

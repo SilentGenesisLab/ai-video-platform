@@ -7,6 +7,7 @@ import {
   permissionCatalog,
   recommendedPermissions,
   requirePermission,
+  resourceModule,
   hasPermission,
   allowedResourceKinds,
 } from "@/lib/permissions";
@@ -59,6 +60,7 @@ import {
   resourceDetail,
   saveKey,
   saveResource,
+  deleteResource,
 } from "@/lib/services";
 import { roleInput, routes } from "@/lib/contracts";
 import {
@@ -101,7 +103,9 @@ async function handle(
       .get("content-type")
       ?.startsWith("multipart/form-data");
     const body =
-      ["POST", "PATCH", "PUT"].includes(method) && !multipart
+      ["POST", "PATCH", "PUT", "DELETE"].includes(method) &&
+      !multipart &&
+      (method !== "DELETE" || req.body !== null)
         ? await req.json().catch(() => {
             throw new HttpError(400, "需要合法 JSON 请求体");
           })
@@ -363,6 +367,11 @@ async function handle(
       }
       if (group === "resources" && id && method === "GET")
         return ok(await resourceDetail(actor, id));
+      if (group === "resources" && id && !action && method === "DELETE") {
+        const resource = await getResource(actor, id);
+        requirePermission(actor, resourceModule(resource.kind) + ".write");
+        return ok(await create((tx) => deleteResource(actor, id, body, tx)));
+      }
       if (group === "auth" && id === "logout" && method === "POST") {
         const token = req.cookies.get("av_session")?.value;
         if (token)
@@ -387,6 +396,10 @@ async function handle(
             return ok(await context(actor, id, url.searchParams));
           if (method === "GET" && !action)
             return ok(await resourceDetail(actor, id));
+          if (method === "DELETE" && !action)
+            return ok(
+              await create((tx) => deleteResource(actor, id, body, tx)),
+            );
           if (method === "PATCH" && !action)
             return ok(
               await db.$transaction((tx) =>

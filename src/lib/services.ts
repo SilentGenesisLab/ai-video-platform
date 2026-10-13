@@ -526,6 +526,65 @@ export async function listResources(
   ]);
   return { items, total, page, limit };
 }
+export async function deleteResource(
+  actor: Actor,
+  id: string,
+  input: unknown,
+  tx: Tx,
+) {
+  requireScope(actor, "write");
+  const { baseVersion } = z
+    .object({ baseVersion: z.number().int().positive() })
+    .parse(input);
+  const old = await getResource(actor, id, tx);
+  requirePermission(actor, resourceModule(old.kind) + ".write");
+  assert(
+    old.version === baseVersion,
+    409,
+    "内容已更新，请读取最新版本再删除",
+    "VERSION_CONFLICT",
+  );
+  if (old.status === "archived") return old;
+  const previous = await tx.revision.findUniqueOrThrow({
+    where: { resourceId_version: { resourceId: id, version: old.version } },
+  });
+  const result = await tx.resource.updateMany({
+    where: { id, version: baseVersion },
+    data: {
+      status: "archived",
+      version: { increment: 1 },
+      updatedBy: actor.id,
+    },
+  });
+  assert(result.count === 1, 409, "版本冲突", "VERSION_CONFLICT");
+  const resource = await tx.resource.findUniqueOrThrow({ where: { id } });
+  await tx.revision.create({
+    data: {
+      resourceId: id,
+      version: resource.version,
+      title: resource.title,
+      status: resource.status,
+      content: json(resource.content),
+      sources: json(previous.sources),
+      actorId: actor.id,
+      actorType: actor.type,
+    },
+  });
+  await audit(
+    tx,
+    actor,
+    "resource.deleted",
+    id,
+    old.kind === "product" ? id : old.productId,
+    {
+      kind: old.kind,
+      version: resource.version,
+      previousStatus: old.status,
+      mode: "archive",
+    },
+  );
+  return resource;
+}
 export async function resourceDetail(actor: Actor, id: string) {
   const resource = await getResource(actor, id);
   const revisions = await db.revision.findMany({
