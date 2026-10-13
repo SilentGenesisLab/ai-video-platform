@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { GET as handle } from "../src/app/api/v1/[...path]/route";
@@ -493,7 +494,7 @@ async function main() {
     {},
   );
   assert.deepEqual(copies.permissions, video.key.permissions);
-  assert.equal(copies.skillVersion, "1.5.0");
+  assert.equal(copies.skillVersion, JSON.parse(readFileSync("package.json", "utf8")).version);
   assert(
     !JSON.stringify(await request(human, "/api-keys")).includes(video.token),
   );
