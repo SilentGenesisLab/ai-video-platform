@@ -1065,6 +1065,43 @@ export default function ProductDetail({
           </div>
         </div>
         <div className="pd-header-actions">
+          {product && !readOnly && product.status !== "archived" && (
+            <button
+              className="button"
+              disabled={saving}
+              onClick={async () => {
+                if (
+                  !window.confirm(
+                    "删除这个产品？产品将移入已归档，关联创意、策划、文件和制作任务保留。",
+                  )
+                )
+                  return;
+                if (
+                  dirty &&
+                  !window.confirm(
+                    "当前有未保存修改，删除会放弃这些修改。继续？",
+                  )
+                )
+                  return;
+                setSaving(true);
+                try {
+                  await api(`/products/${id}`, "DELETE", {
+                    baseVersion: product.version,
+                  });
+                  onDirtyChange(false);
+                  notify("产品已删除，可在已归档中恢复", "success");
+                  router.push("/studio/products");
+                } catch (e) {
+                  notify((e as Error).message);
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              <Trash2 size={15} />
+              删除产品
+            </button>
+          )}
           {product && (
             <>
               <button

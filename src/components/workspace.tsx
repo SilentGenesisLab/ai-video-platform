@@ -59,6 +59,16 @@ import { useAssistant } from "./assistant";
 import ProductDetail from "./product-detail";
 import AccountMenu from "./account-menu";
 import { api, Item, labels } from "./api";
+const resourceNames: Record<string, string> = {
+  products: "产品",
+  concepts: "创意",
+  plans: "策划案",
+  storyboards: "分镜",
+  assets: "资产",
+  scripts: "制作脚本",
+  deliverables: "成片",
+  "creative-batches": "创意批次",
+};
 const navigation = [
   {
     id: "products",
@@ -1461,6 +1471,7 @@ export default function Workspace() {
   const [conceptAction, setConceptAction] = useState<{
       item: Item;
       kind: "score" | "delete" | "restore";
+      route?: string;
     } | null>(null),
     [conceptBusy, setConceptBusy] = useState(false),
     [scoreValue, setScoreValue] = useState("");
@@ -1610,27 +1621,31 @@ export default function Workspace() {
         if (scoreValue === "") delete content.score;
         else content.score = Number(scoreValue);
       }
-      await api("/concepts/" + item.id, "PATCH", {
-        title: item.title,
-        productId: item.productId,
-        ...(item.parentId ? { parentId: item.parentId } : {}),
-        ...(item.planId ? { planId: item.planId } : {}),
-        status:
-          kind === "delete"
-            ? "archived"
-            : kind === "restore"
-              ? "draft"
-              : item.status,
-        content,
-        baseVersion: item.version,
-      });
+      if (kind === "delete")
+        await api("/resources/" + item.id, "DELETE", {
+          baseVersion: item.version,
+        });
+      else
+        await api(
+          "/" + (conceptAction.route ?? "concepts") + "/" + item.id,
+          "PATCH",
+          {
+            title: item.title,
+            ...(item.productId ? { productId: item.productId } : {}),
+            ...(item.parentId ? { parentId: item.parentId } : {}),
+            ...(item.planId ? { planId: item.planId } : {}),
+            status: kind === "restore" ? "draft" : item.status,
+            content,
+            baseVersion: item.version,
+          },
+        );
       setConceptAction(null);
       notify(
         kind === "score"
           ? "评分已保存"
           : kind === "delete"
-            ? "创意已删除，可在已归档中恢复"
-            : "创意已恢复",
+            ? "对象已删除，可在已归档中恢复"
+            : "对象已恢复",
         "success",
       );
       if (kind !== "score" && items.length === 1 && page > 1) setPage(page - 1);
@@ -2579,6 +2594,32 @@ export default function Workspace() {
                         (route === "concepts" ? "concept-card" : "")
                       }
                     >
+                      {canWrite && (
+                        <button
+                          type="button"
+                          className="resource-delete-button"
+                          aria-label={
+                            (item.status === "archived" ? "恢复" : "删除") +
+                            (resourceNames[route] ?? "对象") +
+                            "：" +
+                            item.title
+                          }
+                          title={item.status === "archived" ? "恢复" : "删除"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConceptAction({
+                              item,
+                              route,
+                              kind:
+                                item.status === "archived"
+                                  ? "restore"
+                                  : "delete",
+                            });
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                       {route === "concepts" ? (
                         <div className="concept-card-status">
                           <Badge status={item.status} />
@@ -2701,7 +2742,6 @@ export default function Workspace() {
                                 );
                                 setConceptAction({ item, kind: "score" });
                               }}
-
                             >
                               评分{" "}
                               {item.content.score === undefined
@@ -2743,28 +2783,6 @@ export default function Workspace() {
                         </div>
                       </div>
                       <footer>
-                        {route === "concepts" && canWrite && (
-                          <button
-                            className="concept-delete"
-                            aria-label={
-                              (item.status === "archived"
-                                ? "恢复创意："
-                                : "删除创意：") + item.title
-                            }
-                            onClick={() =>
-                              setConceptAction({
-                                item,
-                                kind:
-                                  item.status === "archived"
-                                    ? "restore"
-                                    : "delete",
-                              })
-                            }
-                          >
-                            <Trash2 size={14} />
-                            {item.status === "archived" ? "恢复" : "删除"}
-                          </button>
-                        )}
                         {route === "products" ? (
                           <>
                             <button
@@ -2925,8 +2943,10 @@ export default function Workspace() {
             conceptAction.kind === "score"
               ? "创意评分"
               : conceptAction.kind === "delete"
-                ? "删除创意"
-                : "恢复创意"
+                ? "删除" +
+                  (resourceNames[conceptAction.route ?? "concepts"] ?? "对象")
+                : "恢复" +
+                  (resourceNames[conceptAction.route ?? "concepts"] ?? "对象")
           }
           onClose={() => {
             if (!conceptBusy) setConceptAction(null);
@@ -2958,7 +2978,7 @@ export default function Workspace() {
               ) : (
                 <p>
                   {conceptAction.kind === "delete"
-                    ? "删除后移入已归档，可随时恢复。历史版本和已关联策划案保留。"
+                    ? "删除后移入已归档，可随时恢复。历史版本、文件和下游关联资料保留，不会同时删除其他对象或取消制作任务。"
                     : "恢复后回到草稿状态，历史版本继续保留。"}
                 </p>
               )}

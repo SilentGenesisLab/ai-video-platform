@@ -72,6 +72,18 @@ export function openapi() {
       : {}),
     responses: { "200": response, ...errors },
   });
+  paths["/api/v1/resources/{id}"] = {
+    get: operation("Read resource with revisions", undefined, [param("id")]),
+    delete: operation(
+      "Archive resource without cascading deletion",
+      {
+        type: "object",
+        required: ["baseVersion"],
+        properties: { baseVersion: { type: "integer", minimum: 1 } },
+      },
+      [param("id"), { ...param("Idempotency-Key", "header"), required: true }],
+    ),
+  };
   for (const [route, kind] of Object.entries(routes)) {
     const schema = {
       ...z.toJSONSchema(resourceInput),
@@ -99,6 +111,18 @@ export function openapi() {
         param("id"),
       ]),
       patch: operation("Revise; baseVersion required", schema, [param("id")]),
+      delete: operation(
+        "Delete to archive; retain files, revisions and downstream references",
+        {
+          type: "object",
+          required: ["baseVersion"],
+          properties: { baseVersion: { type: "integer", minimum: 1 } },
+        },
+        [
+          param("id"),
+          { ...param("Idempotency-Key", "header"), required: true },
+        ],
+      ),
     };
   }
   paths["/api/v1/products/{id}/context"] = {

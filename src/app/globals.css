@@ -625,6 +625,7 @@ small,
   gap: 20px;
 }
 .resource-card {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
@@ -632,6 +633,35 @@ small,
   transition:
     box-shadow 0.2s,
     transform 0.2s;
+}
+.resource-card .resource-delete-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #e2e7de;
+  border-radius: 9px;
+  background: #fffffff0;
+  color: #ad6253;
+  cursor: pointer;
+}
+.resource-card .resource-delete-button:hover {
+  background: #fff0eb;
+  border-color: #d6a696;
+}
+.resource-card .card-media-top .version,
+.resource-card .concept-card-status .version {
+  margin-right: 44px;
+}
+html[data-studio-theme="dark"] .resource-card .resource-delete-button {
+  background: #263e32f0;
+  border-color: #4d6553;
+  color: #efb39d;
 }
 .resource-card:hover {
   box-shadow: var(--shadow);

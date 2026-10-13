@@ -18,7 +18,7 @@ export async function api(path: string, method = "GET", body?: unknown) {
         method,
         headers: {
           "Content-Type": "application/json",
-          ...(method === "POST"
+          ...(method === "POST" || method === "DELETE"
             ? { "Idempotency-Key": crypto.randomUUID() }
             : {}),
         },
