@@ -128,8 +128,10 @@ export const keyInput = z.object({
   scopes: z
     .array(z.enum(["read", "write", "generate"]))
     .min(1)
-    .default(["read", "write", "generate"]),
-  productIds: strings.default([]),
+    .optional(),
+  permissions: z.array(z.string()).min(1).optional(),
+  productScopeMode: z.enum(["all", "selected"]).optional(),
+  productIds: strings.optional(),
   expiresAt: z.iso.datetime().nullable().optional(),
   enabled: z.boolean().default(true),
 });

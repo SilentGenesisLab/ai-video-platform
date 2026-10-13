@@ -1,3 +1,16 @@
+import {
+  guardRequest,
+  canReadBatch,
+  canReadJob,
+} from "@/lib/key-authorization";
+import {
+  permissionCatalog,
+  recommendedPermissions,
+  requirePermission,
+  hasPermission,
+  allowedResourceKinds,
+} from "@/lib/permissions";
+import { roles } from "@/lib/auth";
 import { isUnscored } from "@/lib/concept-scoring";
 import { adminRoute } from "@/lib/platform-admin";
 import { meteredStream } from "@/lib/metered-stream";
@@ -102,7 +115,7 @@ async function handle(
     if (group === "openapi.json" && method === "GET") return ok(openapi());
     if (group === "health" && method === "GET") {
       await db.$queryRaw`SELECT 1`;
-      return ok({ status: "ok", version: "1.4.4" });
+      return ok({ status: "ok", version: "1.5.1" });
     }
     if (group === "auth") {
       const response = await accountRoute(req, id, body);
@@ -141,6 +154,7 @@ async function handle(
         });
         const a = await authenticate(runReq);
         requireScope(a, "generate");
+        requirePermission(a, "chat.execute");
         const d = z
           .object({
             invocationId: z.string().min(1).max(200),
@@ -210,6 +224,7 @@ async function handle(
     }
     const actor = await authenticate(req);
     return await withTeam(actor.teamId, async () => {
+      await guardRequest(actor, parts, method, body);
       const adminResult = await adminRoute(
         actor,
         parts,
@@ -254,7 +269,9 @@ async function handle(
         } else
           requireScope(
             actor,
-            group === "production-batches" || action === "overview"
+            group === "production-batches" ||
+              (group === "tools" && id === "generate-media") ||
+              action === "overview"
               ? "generate"
               : "write",
           );
@@ -409,6 +426,32 @@ async function handle(
       }
       if (group === "api-keys") {
         requireHuman(actor);
+        if (id === "options" && method === "GET") {
+          const ownerId = url.searchParams.get("ownerId") || actor.userId;
+          assert(
+            actor.role === "admin" || ownerId === actor.userId,
+            403,
+            "不能为其他成员配置权限",
+          );
+          const member = await db.teamMember.findUnique({
+            where: { teamId_userId: { teamId: actor.teamId, userId: ownerId } },
+          });
+          assert(member?.active, 422, "成员不可用");
+          const grantable = permissionCatalog
+            .filter(
+              (p) =>
+                actor.scopes.includes(p.scope) &&
+                (roles[member.role] ?? []).includes(p.scope),
+            )
+            .map((p) => p.id);
+          return ok({
+            catalog: permissionCatalog,
+            grantable,
+            recommended: recommendedPermissions.filter((p) =>
+              grantable.includes(p),
+            ),
+          });
+        }
         if (!id && method === "GET")
           return ok({ items: await listKeys(actor) });
         if (!id && method === "POST")
@@ -626,6 +669,12 @@ async function handle(
             include: { jobs: true },
           });
           assert(batch, 404, "批次不存在");
+          assert(
+            await canReadBatch(actor, batch),
+            403,
+            "无权查看此模块的批次",
+            "KEY_PERMISSION",
+          );
           productAccess(actor, batch.productId);
           if (method === "POST" && action === "refresh-quote")
             return ok(await refreshVideoQuote(actor, id));
@@ -634,20 +683,24 @@ async function handle(
         if (!id && method === "GET") {
           const productId = url.searchParams.get("productId");
           if (productId) productAccess(actor, productId);
-          return ok({
-            items: await db.productionBatch.findMany({
-              where: {
-                ...(productId
-                  ? { productId }
-                  : actor.productIds.length
-                    ? { productId: { in: actor.productIds } }
-                    : {}),
-              },
-              include: { jobs: true },
-              orderBy: { createdAt: "desc" },
-              take: 100,
-            }),
+          const candidates = await db.productionBatch.findMany({
+            where: {
+              ...(productId
+                ? { productId }
+                : actor.productIds.length
+                  ? { productId: { in: actor.productIds } }
+                  : {}),
+            },
+            include: { jobs: true },
+            orderBy: { createdAt: "desc" },
+            take: 100,
           });
+          const visible = await Promise.all(
+            candidates.map(async (b) =>
+              (await canReadBatch(actor, b)) ? b : null,
+            ),
+          );
+          return ok({ items: visible.filter(Boolean) });
         }
       }
       if (group === "approvals" && id && method === "POST")
@@ -660,17 +713,25 @@ async function handle(
             include: { batch: true },
           });
           assert(job, 404, "任务不存在");
+          assert(
+            await canReadJob(actor, job),
+            403,
+            "无权查看此模块的任务",
+            "KEY_PERMISSION",
+          );
           if (job.kind === "concept_scoring") requireHuman(actor);
           await scopedAccess(actor, job);
           if (method === "GET")
             return ok({
               ...job,
               input: redact(job.input),
-              events: await db.auditEvent.findMany({
-                where: { entityId: id },
-                orderBy: { createdAt: "asc" },
-                take: 100,
-              }),
+              events: hasPermission(actor, "operations.logs")
+                ? await db.auditEvent.findMany({
+                    where: { entityId: id },
+                    orderBy: { createdAt: "asc" },
+                    take: 100,
+                  })
+                : [],
             });
           if (method === "POST" && action === "cancel")
             return ok(await cancelJob(actor, id));
@@ -756,23 +817,26 @@ async function handle(
         if (!id && method === "GET") {
           const productId = url.searchParams.get("productId");
           if (productId) productAccess(actor, productId);
-          return ok({
-            items: await db.job.findMany({
-              where: {
-                ...(actor.type === "agent"
-                  ? { kind: { not: "concept_scoring" } }
+          const candidates = await db.job.findMany({
+            where: {
+              ...(await scopedFilter(actor)),
+              ...(productId
+                ? { productId }
+                : actor.productIds.length
+                  ? { productId: { in: actor.productIds } }
                   : {}),
-                ...(await scopedFilter(actor)),
-                ...(productId
-                  ? { productId }
-                  : actor.productIds.length
-                    ? { productId: { in: actor.productIds } }
-                    : {}),
-              },
-              orderBy: { createdAt: "desc" },
-              take: 100,
-            }),
+            },
+            orderBy: { createdAt: "desc" },
+            take: 100,
           });
+          const visible = await Promise.all(
+            candidates.map(async (j) =>
+              (await canReadJob(actor, j))
+                ? { ...j, input: redact(j.input) }
+                : null,
+            ),
+          );
+          return ok({ items: visible.filter(Boolean) });
         }
       }
       if (group === "tools" && id === "web-search" && method === "POST")
@@ -849,28 +913,88 @@ async function handle(
         requireScope(actor, "read");
         const items = await db.resource.groupBy({
           by: ["kind"],
-          where: { ...resourceFilter(actor), status: { not: "archived" } },
+          where: {
+            ...resourceFilter(actor),
+            status: { not: "archived" },
+            kind: { in: allowedResourceKinds(actor) },
+          },
           _count: true,
         });
         const where = actor.productIds.length
           ? { productId: { in: actor.productIds } }
           : {};
+        const visibleJobs =
+          actor.type === "agent"
+            ? await Promise.all(
+                (
+                  await db.job.findMany({
+                    where: { ...where, ...(await scopedFilter(actor)) },
+                    select: { kind: true, input: true, status: true },
+                  })
+                ).map(async (j) => ((await canReadJob(actor, j)) ? j : null)),
+              )
+            : null;
         return ok({
           counts: Object.fromEntries(items.map((i) => [i.kind, i._count])),
           pendingApprovals: await db.productionBatch.count({
-            where: { ...where, status: "pending_approval" },
-          }),
-          runningJobs: await db.job.count({
             where: {
               ...where,
-              status: {
-                in: ["queued", "submitting", "running", "transferring"],
-              },
+              status: "pending_approval",
+              ...(hasPermission(actor, "video.read") ? {} : { id: { in: [] } }),
             },
           }),
-          completedJobs: await db.job.count({
-            where: { ...where, status: "succeeded" },
-          }),
+          runningJobs: visibleJobs
+            ? visibleJobs.filter(
+                (j) =>
+                  j &&
+                  ["queued", "submitting", "running", "transferring"].includes(
+                    j.status,
+                  ),
+              ).length
+            : await db.job.count({
+                where: {
+                  ...where,
+                  kind: {
+                    in: [
+                      ...(hasPermission(actor, "asset.read")
+                        ? ["image", "audio"]
+                        : []),
+                      ...(hasPermission(actor, "video.read") ? ["video"] : []),
+                      ...(hasPermission(actor, "file.read")
+                        ? ["parse", "video_analysis", "import"]
+                        : []),
+                      ...(hasPermission(actor, "creative.read")
+                        ? ["overview"]
+                        : []),
+                    ],
+                  },
+                  status: {
+                    in: ["queued", "submitting", "running", "transferring"],
+                  },
+                },
+              }),
+          completedJobs: visibleJobs
+            ? visibleJobs.filter((j) => j?.status === "succeeded").length
+            : await db.job.count({
+                where: {
+                  ...where,
+                  status: "succeeded",
+                  kind: {
+                    in: [
+                      ...(hasPermission(actor, "asset.read")
+                        ? ["image", "audio"]
+                        : []),
+                      ...(hasPermission(actor, "video.read") ? ["video"] : []),
+                      ...(hasPermission(actor, "file.read")
+                        ? ["parse", "video_analysis", "import"]
+                        : []),
+                      ...(hasPermission(actor, "creative.read")
+                        ? ["overview"]
+                        : []),
+                    ],
+                  },
+                },
+              }),
         });
       }
       throw new HttpError(404, "接口不存在");

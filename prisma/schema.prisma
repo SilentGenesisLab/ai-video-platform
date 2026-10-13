@@ -50,6 +50,8 @@ model ApiKey {
   ownerId String
   owner User @relation(fields: [ownerId], references: [id])
   scopes String[]
+  permissions Json?
+  productScopeMode String @default("all")
   productIds String[]
   enabled Boolean @default(true)
   expiresAt DateTime?
@@ -252,6 +254,8 @@ model AgentRun {
   tokenHash String @unique
   tokenCiphertext String
   scopes String[]
+  permissions Json?
+  productScopeMode String @default("all")
   productIds String[]
   stopRequested Boolean @default(false)
   leaseUntil DateTime?

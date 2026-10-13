@@ -139,6 +139,8 @@ async function main() {
           assert.equal(await tx.job.count({ where: { batchId: video.id } }), 0);
           const cards = await conversationMedia(actor, c.id, tx);
           assert.equal(cards.items.length, 2);
+          assert.equal(cards.items.find(b => b.id === video.id)?.canConfirm, true);
+          assert.ok(Number(cards.items.find(b => b.id === video.id)?.estimatedCredits) > 0);
           assert.equal(
             cards.items.find((b) => b.id === image.id)?.jobs.length,
             1,

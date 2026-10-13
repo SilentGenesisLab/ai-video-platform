@@ -1,3 +1,4 @@
+import { checkBatchPermission } from "./key-authorization";
 import { scheduleSchema, priceMultiplier } from "./price-schedule";
 import { deepseekOfficialPrice } from "./official-prices";
 import { Prisma } from "@prisma/client";
@@ -240,6 +241,7 @@ export async function rateLine(
 export async function quoteBatch(a: Actor, input: any) {
   requireScope(a, "generate");
   const data = batchInput.parse(input);
+  await checkBatchPermission(a, data);
   await getResource(a, data.productId);
   if (data.planId) {
     const plan = await getResource(a, data.planId);

@@ -147,6 +147,11 @@ export function openapi() {
       "get",
       "Short-lived attachment download links for submitter or platform administrator",
     ],
+    [
+      "/api-keys/options",
+      "get",
+      "Human-only permission catalog, dependencies and grantable permissions; optional ownerId",
+    ],
     ["/api-keys", "get", "List owned platform keys; human session only"],
     [
       "/api-keys",
@@ -761,9 +766,9 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.4.4",
+      version: "1.5.1",
       description:
-        "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
+        "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys enforce module permissions and explicit productScopeMode (all includes future team products, selected requires productIds). Legacy scopes remain summaries, and incompatible legacy authorization edits return 409. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
     },
     servers: [{ url: process.env.APP_URL ?? "http://localhost:3000" }],
     paths,

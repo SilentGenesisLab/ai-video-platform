@@ -1,4 +1,10 @@
 import { consentDetails } from "./video-consent";
+import {
+  requirePermission,
+  permissionsOf,
+  hasPermission,
+  resourceModule,
+} from "./permissions";
 import { z } from "zod";
 import { db } from "./db";
 import { Actor, agentScopes, productAccess, requireScope, roles } from "./auth";
@@ -10,6 +16,7 @@ export { conversationAccess } from "./access";
 import { appendEvent } from "./events";
 import { readUrl } from "./storage";
 import { prepareAttachments } from "./attachments";
+import { canReadBatch } from "./key-authorization";
 
 export async function conversationMedia(actor: Actor, id: string, tx: Tx = db) {
   await conversationAccess(actor, id, tx);
@@ -28,9 +35,12 @@ export async function conversationMedia(actor: Actor, id: string, tx: Tx = db) {
     orderBy: { createdAt: "asc" },
     take: 100,
   });
+  const visible = [];
+  for (const b of batches) if (await canReadBatch(actor, b)) visible.push(b);
   return {
     items: await Promise.all(
-      batches.map(async (b) => ({
+      visible.map(async (b) => ({
+        ...(await consentDetails(actor, b, tx)),
         id: b.id,
         title: b.title,
         kind: b.kind,
@@ -46,7 +56,10 @@ export async function conversationMedia(actor: Actor, id: string, tx: Tx = db) {
             status: j.status,
             error: j.error,
             files: await Promise.all(
-              ((j.result as any)?.files ?? []).map(async (f: any) => {
+              (hasPermission(actor, "file.read")
+                ? ((j.result as any)?.files ?? [])
+                : []
+              ).map(async (f: any) => {
                 const file = await tx.fileObject.findFirst({
                   where: {
                     id: f.fileId,
@@ -99,11 +112,23 @@ export async function conversationSnapshot(actor: Actor, id: string) {
       orderBy: { createdAt: "asc" },
       take: 100,
     });
+    if (actor.type === "agent")
+      c.messages = c.messages.map((m) => ({
+        ...m,
+        attachmentIds: hasPermission(actor, "file.read") ? m.attachmentIds : [],
+        contextRefs: (Array.isArray(m.contextRefs) ? m.contextRefs : []).filter(
+          (r: any) =>
+            hasPermission(actor, resourceModule(r.kind) + ".read") &&
+            (!actor.productIds.length ||
+              actor.productIds.includes(r.productId)),
+        ),
+      }));
     return { ...c, searches, cursor: last?.seq.toString() ?? "0" };
   });
 }
 export async function createConversation(actor: Actor, input: unknown, tx: Tx) {
   requireScope(actor, "write");
+  requirePermission(actor, "chat.execute");
   const data = z
     .object({
       title: z.string().min(1).max(200).default("新对话"),
@@ -133,6 +158,7 @@ export async function sendMessage(
   tx: Tx,
 ) {
   requireScope(actor, "write");
+  requirePermission(actor, "chat.execute");
   const { text, attachmentIds, referenceIds } = z
     .object({
       text: z.string().max(30000).default(""),
@@ -207,6 +233,13 @@ export async function sendMessage(
       tokenHash: digest(token),
       tokenCiphertext: encrypt(token),
       scopes: actor.scopes.filter((s) => agentScopes.includes(s)),
+      permissions: json(permissionsOf(actor)),
+      productScopeMode:
+        conversation.productId ||
+        actor.productScopeMode === "selected" ||
+        actor.productIds.length
+          ? "selected"
+          : "all",
       productIds: conversation.productId
         ? [conversation.productId]
         : actor.productIds,
@@ -223,6 +256,7 @@ export async function sendMessage(
 }
 export async function controlRun(actor: Actor, id: string, action: string) {
   requireScope(actor, "write");
+  requirePermission(actor, "chat.control");
   return db.$transaction(async (tx) => {
     const run = await tx.agentRun.findUnique({ where: { id } });
     assert(run, 404, "运行不存在");
@@ -363,7 +397,15 @@ export async function claimRun() {
           source.teamId !== run.teamId ||
           source.revokedAt ||
           (source.expiresAt && source.expiresAt <= new Date()) ||
-          !["read", "write"].every((scope) => source.scopes.includes(scope)) ||
+          !["read", "write", "generate"].every((scope) =>
+            source.scopes.includes(scope),
+          ) ||
+          !permissionsOf({
+            scopes: source.scopes,
+            permissions: Array.isArray(source.permissions)
+              ? (source.permissions as string[])
+              : null,
+          }).includes("chat.execute") ||
           (source.productIds.length &&
             (!run.productIds.length ||
               run.productIds.some((p) => !source.productIds.includes(p))))))
@@ -381,6 +423,21 @@ export async function claimRun() {
       );
       return null;
     }
+    const effectivePermissions = permissionsOf({
+      scopes: run.scopes,
+      permissions: Array.isArray(run.permissions)
+        ? (run.permissions as string[])
+        : null,
+    }).filter(
+      (p) =>
+        !source ||
+        permissionsOf({
+          scopes: source.scopes,
+          permissions: Array.isArray(source.permissions)
+            ? (source.permissions as string[])
+            : null,
+        }).includes(p),
+    );
     const channel = await tx.channel.findFirst({
       where: { provider: "deepseek", enabled: true },
     });
@@ -398,11 +455,31 @@ export async function claimRun() {
       productId: run.conversation.productId,
       planId: run.conversation.planId,
       attempt: run.attempt,
-      messages: run.conversation.messages.filter(
-        (m) => m.status === "completed",
-      ),
+      messages: run.conversation.messages
+        .filter((m) => m.status === "completed")
+        .map((m) => ({
+          ...m,
+          attachmentIds: effectivePermissions.includes("file.read")
+            ? m.attachmentIds
+            : [],
+          contextRefs: (Array.isArray(m.contextRefs)
+            ? m.contextRefs
+            : []
+          ).filter(
+            (r: any) =>
+              effectivePermissions.includes(resourceModule(r.kind) + ".read") &&
+              (!run.productIds.length || run.productIds.includes(r.productId)),
+          ),
+        })),
       attachments: await tx.fileObject.findMany({
-        where: { teamId: run.teamId, id: { in: run.attachmentIds } },
+        where: {
+          teamId: run.teamId,
+          id: {
+            in: effectivePermissions.includes("file.read")
+              ? run.attachmentIds
+              : [],
+          },
+        },
         select: {
           id: true,
           name: true,
@@ -418,6 +495,8 @@ export async function claimRun() {
         channelId: channel.id,
         model: (channel.models as any).text?.[0] ?? "deepseek-flash",
       },
+      permissions: effectivePermissions,
+      productScopeMode: run.productScopeMode,
       scopes: run.scopes.filter((s) =>
         (roles[membership.role] ?? []).includes(s),
       ),

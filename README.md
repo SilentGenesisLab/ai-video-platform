@@ -104,3 +104,12 @@ npm run build
 ## 1.1 官网与团队积分
 
 新版支持独立官网、手机账号、团队邀请及隔离、1000 分首次注册赠送和按采购价结算。配置、迁移、权限与测试说明见 [升级文档](docs/upgrade-1.1.md)。采购价必须由平台管理员据实录入，缺价型号不可生成。
+
+
+### API Key 细分授权（1.5.0）
+
+创建和编辑共用权限选择器，支持按模块勾选、分组／全部全选、清空、恢复推荐；默认制作权限不包含操作日志与积分查询。产品范围明确选择全部（包含未来新增）或指定产品，独立分页搜索、批量选择。仅人类会话可管理密钥，全选仍不授予审批、成员或密钥管理、采购价修改与渠道凭据访问。
+
+API 的 `permissions`、`productScopeMode` 与 `productIds` 是授权依据，旧 `scopes` 作为兼容摘要；旧 Key 不扩大权限。细分 Key 的旧客户端不兼容权限／范围扩张返回 409。每次请求重新计算当前成员和 Key 权限，Agent Run 再与原始授权快照取交集。公开 Skill 1.5.0 和 `/api/v1/openapi.json` 包含新契约。
+
+验收：`npx tsx --env-file=.env tests/key-permissions-integration.ts`（仅隔离库），`npx playwright test tests/key-permissions.browser.spec.ts`。集成验收只做免费报价与视频待审批提交，不调用付费生成；测试资料归档、Key 撤销并保留审计。

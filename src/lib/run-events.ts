@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { permissionsOf } from "./permissions";
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { assert } from "./errors";
@@ -59,7 +60,15 @@ export async function recordRunEvent(
           source.teamId !== run.teamId ||
           source.revokedAt ||
           (source.expiresAt && source.expiresAt <= new Date()) ||
-          !["read", "write"].every((scope) => source.scopes.includes(scope)) ||
+          !["read", "write", "generate"].every((scope) =>
+            source.scopes.includes(scope),
+          ) ||
+          !permissionsOf({
+            scopes: source.scopes,
+            permissions: Array.isArray(source.permissions)
+              ? (source.permissions as string[])
+              : null,
+          }).includes("chat.execute") ||
           (source.productIds.length &&
             (!run.productIds.length ||
               run.productIds.some((p) => !source.productIds.includes(p))))))

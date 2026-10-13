@@ -2,6 +2,7 @@ import Redis from "ioredis";
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { authenticate } from "./auth";
+import { hasPermission, resourceModule } from "./permissions";
 import { conversationAccess } from "./access";
 import { json, type Tx } from "./services";
 import { assert } from "./errors";
@@ -83,8 +84,7 @@ export async function conversationEvents(req: Request, id: string) {
   );
   let cursor = BigInt(after),
     closed = false,
-    busy = false,
-    lastAuth = 0;
+    busy = false;
   let timer: ReturnType<typeof setInterval> | undefined;
   let sub: Redis | undefined;
   const encoder = new TextEncoder();
@@ -103,10 +103,8 @@ export async function conversationEvents(req: Request, id: string) {
         if (closed || busy) return;
         busy = true;
         try {
-          if (Date.now() - lastAuth > 10000) {
-            await conversationAccess(await authenticate(req), id);
-            lastAuth = Date.now();
-          }
+          const actor = await authenticate(req);
+          await conversationAccess(actor, id);
           let more = true;
           while (more && !closed) {
             const events = await db.agentEvent.findMany({
@@ -114,7 +112,37 @@ export async function conversationEvents(req: Request, id: string) {
               orderBy: { seq: "asc" },
               take: 200,
             });
-            for (const e of events) {
+            for (const original of events) {
+              const e = { ...original };
+              if (actor.type === "agent") {
+                const data = e.data as any;
+                if (
+                  e.type === "attachment" &&
+                  !hasPermission(actor, "file.read")
+                ) {
+                  cursor = e.seq;
+                  continue;
+                }
+                if (e.type === "message" && data && typeof data === "object")
+                  e.data = {
+                    ...data,
+                    attachmentIds: hasPermission(actor, "file.read")
+                      ? data.attachmentIds
+                      : [],
+                    contextRefs: (Array.isArray(data.contextRefs)
+                      ? data.contextRefs
+                      : []
+                    ).filter(
+                      (r: any) =>
+                        hasPermission(
+                          actor,
+                          resourceModule(r.kind) + ".read",
+                        ) &&
+                        (!actor.productIds.length ||
+                          actor.productIds.includes(r.productId)),
+                    ),
+                  };
+              }
               send(
                 `id: ${e.seq}\nevent: update\ndata: ${JSON.stringify({ ...e, seq: e.seq.toString() })}\n\n`,
               );
