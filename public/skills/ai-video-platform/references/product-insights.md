@@ -1,4 +1,4 @@
-# Product insights · 1.4.3
+# Product insights · 1.4.4
 
 The product page is `/studio/products/{id}` with `?tab=overview|insights|brief|materials|references`.
 Read `GET /api/v1/products/{id}` before editing. PATCH uses `title`, `status`, `baseVersion` and `content`; omitted product content fields are preserved. Lists supplied in a PATCH replace that list, so retain existing entries and their stable IDs when appending or reordering.

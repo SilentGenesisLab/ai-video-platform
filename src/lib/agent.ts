@@ -1,3 +1,4 @@
+import { consentDetails } from "./video-consent";
 import { z } from "zod";
 import { db } from "./db";
 import { Actor, agentScopes, productAccess, requireScope, roles } from "./auth";

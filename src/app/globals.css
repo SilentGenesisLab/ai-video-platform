@@ -2512,3 +2512,16 @@ html[data-studio-theme="dark"] .concept-card footer .concept-delete {
   background: var(--surface, #f2f6ef);
   border-radius: 10px;
 }
+
+.assistant-consent-overlay { position:absolute; inset:0; z-index:12; background:#17231b66; display:flex; align-items:center; padding:20px; backdrop-filter:blur(3px); }
+.assistant-consent-dialog { position:relative; width:100%; max-height:calc(100% - 40px); overflow:auto; padding:24px; background:var(--surface, #fff); border:1px solid var(--line); border-radius:18px; box-shadow:0 16px 50px #0003; }
+.assistant-consent-dialog h3 { margin:0 30px 12px 0; }
+.assistant-consent-dialog p { line-height:1.6; overflow-wrap:anywhere; }
+.assistant-consent-close { position:absolute; top:16px; right:12px; }
+.assistant-consent-cost { display:flex; align-items:baseline; gap:12px; margin:20px 0; }
+.assistant-consent-cost strong { font-size:32px; }
+.assistant-consent-dialog small { display:block; color:var(--muted); line-height:1.6; }
+.assistant-consent-dialog details { margin:18px 0; }
+.assistant-consent-dialog details div { border-top:1px solid var(--line); padding:12px 0; }
+.assistant-consent-actions { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; margin-top:24px; }
+@media(max-width:640px) { .assistant-consent-overlay { padding:12px; } .assistant-consent-dialog { padding:18px; } }

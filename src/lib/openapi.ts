@@ -196,9 +196,15 @@ export function openapi() {
     ["/production-batches", "get", "List batches"],
     ["/production-batches/{id}", "get", "Batch snapshot and jobs"],
     [
+      "/production-batches/{id}/refresh-quote",
+      "post",
+      "Human owner (write + generate) or reviewer refreshes pending video cost quote without freezing credits or submitting generation; returns digest and estimatedCredits for explicit consent",
+      {},
+    ],
+    [
       "/approvals/{id}",
       "post",
-      "Human reviewer approves or rejects exact snapshot",
+      "Human owner (write + generate) or reviewer consents to exact video snapshot and quoted credits; approval freezes credits and enqueues once. Agents cannot consent.",
       {
         type: "object",
         required: ["digest", "decision"],
@@ -755,7 +761,7 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.4.3",
+      version: "1.4.4",
       description:
         "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
     },

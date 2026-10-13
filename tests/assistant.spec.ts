@@ -410,7 +410,7 @@ test("ASSISTANT-07 media placeholders update to results without resubmission", a
   const image = page.locator('[data-batch-id="image-fixture"]');
   await expect(image.locator(".assistant-media-placeholder")).toBeVisible();
   await expect(page.locator('[data-batch-id="video-fixture"]')).toContainText(
-    "等待人工审批",
+    "等待发起人确认生成",
   );
   completed = true;
   await expect(image.getByRole("img", { name: "生成的图片" })).toBeVisible({

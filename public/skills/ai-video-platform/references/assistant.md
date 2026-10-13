@@ -1,4 +1,4 @@
-# Assistant API (1.4.3)
+# Assistant API (1.4.4)
 
 Authenticate with the private AIVIDEO_API_KEY. Never include credentials in URLs or logs.
 
@@ -31,3 +31,7 @@ POST `/conversations/{id}/messages` accepts `referenceIds` (at most 10 resource 
 Use POST `/tools/generate-media` with kind (image/video), productId and prompt, optionally count, planId, parameters, referenceFileIds and targetResourceId. The server selects an enabled channel/model and records a quote. Explicit requests to generate images authorize immediate generation without further channel/price questions. Video remains pending human approval. Preserve Idempotency-Key on retries. Query `/conversations/{id}/media` for internal Agent batches, placeholders and signed result URLs; no generation is triggered by reads.
 
 首次用户请求生成持久化 AI 标题，通过 SSE title 事件更新会话；文本标题与评分均不消耗积分。批量评分入口只对人类登录开放，POST /api/v1/concepts/score-unscored 可按 productId 范围提交，GET /jobs/{id} 查看结果，已有评分（含0分）不覆盖。
+
+## Video credit consent
+
+Video submission opens a confirmation dialog in the conversation. It shows refreshed estimatedCredits, count, prompts and the paying personal wallet. Human owner with write+generate, or an authorized reviewer, clicks agree to enqueue; only then are credits reserved. Do not ask the user to navigate elsewhere, and never call approvals as an Agent. GET /conversations/{id}/media includes digest, estimatedCredits, quoteExpiresAt, canConfirm and payerIsCurrentUser, then job placeholders and completed playable results. Human-only POST /production-batches/{id}/refresh-quote refreshes a pending quote without generating or freezing credits. POST /approvals/{id} accepts digest+decision; any quote/content change requires renewed human consent.

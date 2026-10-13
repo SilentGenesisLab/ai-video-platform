@@ -7,7 +7,11 @@ import {
   sendMessage,
   conversationMedia,
 } from "../src/lib/agent";
-import { generateMedia } from "../src/lib/production";
+import {
+  generateMedia,
+  refreshVideoQuote,
+  decideBatch,
+} from "../src/lib/production";
 const u = new URL(process.env.DATABASE_URL!);
 assert.equal(u.hostname, "127.0.0.1");
 assert.equal(u.port, "55432");
@@ -141,6 +145,71 @@ async function main() {
           );
           console.log(
             "PASS automatic channel/quote queues image immediately; video waits for human; conversation recovers both placeholders",
+          );
+          const editor = {
+            ...actor,
+            role: "editor",
+            scopes: ["read", "write", "generate"],
+          };
+          const before = await tx.userWallet.findUniqueOrThrow({
+            where: { userId: actor.userId },
+          });
+          const fresh = await refreshVideoQuote(editor, video.id, tx);
+          assert.equal(fresh.canConfirm, true);
+          assert.equal(fresh.payerIsCurrentUser, true);
+          assert.ok(Number(fresh.estimatedCredits) > 0);
+          assert.equal(
+            (
+              await tx.userWallet.findUniqueOrThrow({
+                where: { userId: actor.userId },
+              })
+            ).frozen.toString(),
+            before.frozen.toString(),
+          );
+          assert.equal(await tx.job.count({ where: { batchId: video.id } }), 0);
+          await assert.rejects(() =>
+            decideBatch(
+              runActor,
+              video.id,
+              { digest: fresh.digest, decision: "approve" },
+              tx,
+            ),
+          );
+          await assert.rejects(() =>
+            decideBatch(
+              editor,
+              video.id,
+              { digest: video.digest, decision: "approve" },
+              tx,
+            ),
+          );
+          const approved = await decideBatch(
+            editor,
+            video.id,
+            { digest: fresh.digest, decision: "approve" },
+            tx,
+          );
+          assert.equal(approved.status, "queued");
+          assert.equal(approved.jobs.length, 1);
+          const after = await tx.userWallet.findUniqueOrThrow({
+            where: { userId: actor.userId },
+          });
+          assert.equal(after.balance.toString(), before.balance.toString());
+          assert.equal(
+            after.frozen.sub(before.frozen).toString(),
+            fresh.estimatedCredits,
+          );
+          await assert.rejects(() =>
+            decideBatch(
+              editor,
+              video.id,
+              { digest: fresh.digest, decision: "approve" },
+              tx,
+            ),
+          );
+          assert.equal(await tx.job.count({ where: { batchId: video.id } }), 1);
+          console.log(
+            "PASS own human editor consents exact quote; no credits frozen before consent; Agent/stale/double approval blocked",
           );
           throw rollback;
         },

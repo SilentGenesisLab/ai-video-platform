@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { payerUser } from "./personal-credits";
+import { consentDetails, requireConsent } from "./video-consent";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
@@ -302,13 +305,15 @@ export async function decideBatch(
   actor: Actor,
   id: string,
   input: { digest: string; decision: string },
+  transaction?: Tx,
 ) {
   requireHuman(actor);
-  requireScope(actor, "approve");
-  return db.$transaction(async (tx) => {
+  const operation = async (tx: Tx) => {
     const batch = await tx.productionBatch.findUnique({ where: { id } });
     assert(batch, 404, "批次不存在");
+    assert(batch.teamId === actor.teamId, 404, "批次不存在");
     productAccess(actor, batch.productId);
+    await requireConsent(actor, batch, tx);
     assert(batch.status === "pending_approval", 409, "批次已处理");
     assert(
       input.digest === batch.digest &&
@@ -343,7 +348,93 @@ export async function decideBatch(
       where: { id },
       include: { jobs: true },
     });
-  });
+  };
+  return transaction ? operation(transaction) : db.$transaction(operation);
+}
+/** Refresh a pending consent quote; never creates jobs or reserves credits. */
+export async function refreshVideoQuote(
+  actor: Actor,
+  id: string,
+  transaction?: Tx,
+) {
+  requireHuman(actor);
+  const operation = async (tx: Tx) => {
+    await tx.$queryRaw`SELECT id FROM "ProductionBatch" WHERE id = ${id} FOR UPDATE`;
+    const batch = await tx.productionBatch.findUnique({ where: { id } });
+    assert(batch && batch.teamId === actor.teamId, 404, "批次不存在");
+    productAccess(actor, batch.productId);
+    await requireConsent(actor, batch, tx);
+    assert(
+      batch.kind === "video" && batch.status === "pending_approval",
+      409,
+      "视频生成申请已处理",
+    );
+    const snapshot = batch.snapshot as any;
+    const entries = [],
+      lines = [];
+    for (const entry of snapshot.entries) {
+      const normalized = await validateEntry(
+        actor,
+        "video",
+        entry,
+        batch.productId,
+        batch.planId ?? undefined,
+        tx,
+      );
+      entries.push(normalized);
+      lines.push(
+        await rateLine(
+          entry.channelId,
+          entry.model,
+          "video",
+          normalized.parameters,
+          undefined,
+          tx,
+        ),
+      );
+    }
+    const amount = lines.reduce(
+      (total, line) => total.add(line.amount),
+      new Prisma.Decimal(0),
+    );
+    const quote = await tx.creditQuote.create({
+      data: {
+        teamId: batch.teamId,
+        actorId: await payerUser(tx, batch.createdBy, batch.teamId),
+        digest: batch.digest,
+        input: json({ batchId: id, entries }),
+        lines: json(lines),
+        amount,
+        expiresAt: new Date(Date.now() + 600000),
+        usedBy: `consent:${id}:${randomUUID()}`,
+      },
+    });
+    const updatedSnapshot = {
+      ...snapshot,
+      entries,
+      quoteId: quote.id,
+      quoteLines: lines,
+      estimatedCredits: amount.toString(),
+      quoteExpiresAt: quote.expiresAt.toISOString(),
+    };
+    const updated = await tx.productionBatch.update({
+      where: { id },
+      data: {
+        snapshot: json(updatedSnapshot),
+        digest: digest(canonical(updatedSnapshot)),
+      },
+    });
+    await audit(
+      tx,
+      actor,
+      "batch.consent_quote_refreshed",
+      id,
+      batch.productId,
+      { amount: amount.toString(), digest: updated.digest },
+    );
+    return consentDetails(actor, updated, tx);
+  };
+  return transaction ? operation(transaction) : db.$transaction(operation);
 }
 export async function cancelJob(actor: Actor, id: string) {
   requireScope(actor, "generate");

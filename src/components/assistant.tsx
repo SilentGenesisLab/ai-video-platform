@@ -1,5 +1,6 @@
 "use client";
 import Select from "./select";
+import VideoConsentDialog from "./video-consent-dialog";
 import {
   createContext,
   useContext,
@@ -119,6 +120,8 @@ const extensions: Record<string, string> = {
 const activeStates = ["queued", "running", "waiting_inputs"];
 const states: Record<string, string> = {
   ...labels,
+  pending_approval: "等待积分确认",
+  rejected: "已取消生成",
   deferred: "发送后分析",
   processing: "正在分析",
   pending: "等待分析",
@@ -221,6 +224,8 @@ function AssistantPanel({
   const [refs, setRefs] = useState<Reference[]>([]),
     [media, setMedia] = useState<any[]>([]);
   const consumedReference = useRef(0);
+  const [approvalBatch, setApprovalBatch] = useState<any>(null);
+  const seenApprovals = useRef(new Set<string>());
   const updateMedia = useCallback(
     (items: any[]) =>
       setMedia((old) => {
@@ -376,6 +381,31 @@ function AssistantPanel({
       );
     input.current?.focus();
   }, [referenceRequest, hydrated, conversations, selectConversation]);
+  useEffect(() => {
+    if (!open) return;
+    if (approvalBatch) {
+      const latest = media.find((b) => b.id === approvalBatch.id);
+      if (latest && latest.status !== "pending_approval")
+        setApprovalBatch(null);
+      return;
+    }
+    const pending = [...media]
+      .reverse()
+      .find(
+        (b) =>
+          b.kind === "video" &&
+          b.status === "pending_approval" &&
+          b.canConfirm &&
+          !seenApprovals.current.has(b.id),
+      );
+    if (pending) {
+      seenApprovals.current.add(pending.id);
+      setApprovalBatch(pending);
+    }
+  }, [open, media, approvalBatch]);
+  useEffect(() => {
+    setApprovalBatch(null);
+  }, [id]);
   useEffect(() => {
     setMedia([]);
     if (!id) return;
@@ -1002,9 +1032,21 @@ function AssistantPanel({
               {batch.kind === "video" ? "视频" : "图片"} ·{" "}
               {states[batch.status] ?? batch.status}
             </small>
-            {batch.status === "pending_approval" && (
-              <a href="/studio/video">等待人工审批，前往视频制作</a>
-            )}
+            {batch.status === "pending_approval" &&
+              (batch.canConfirm ? (
+                <button
+                  className="button primary"
+                  onClick={() => {
+                    seenApprovals.current.add(batch.id);
+                    setApprovalBatch(batch);
+                  }}
+                >
+                  确认生成 ·{" "}
+                  {Number(batch.estimatedCredits).toLocaleString("zh-CN")} 积分
+                </button>
+              ) : (
+                <span>等待发起人确认生成</span>
+              ))}
             {(batch.jobs.length
               ? batch.jobs
               : Array.from({ length: batch.count }, (_, i) => ({
@@ -1267,6 +1309,19 @@ function AssistantPanel({
           </button>
         </div>
       </div>
+      {open && approvalBatch && (
+        <VideoConsentDialog
+          key={approvalBatch.id}
+          batch={approvalBatch}
+          close={() => setApprovalBatch(null)}
+          decided={() => {
+            setApprovalBatch(null);
+            void api(`/conversations/${id}/media`)
+              .then((r) => updateMedia(r.items))
+              .catch((e) => setNotice(e.message));
+          }}
+        />
+      )}
       {saveFile && (
         <div
           className="assistant-save"

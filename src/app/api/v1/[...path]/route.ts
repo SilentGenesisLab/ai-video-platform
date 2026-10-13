@@ -60,6 +60,7 @@ import {
   createBatch,
   generateMedia,
   decideBatch,
+  refreshVideoQuote,
 } from "@/lib/production";
 import {
   claimRun,
@@ -101,7 +102,7 @@ async function handle(
     if (group === "openapi.json" && method === "GET") return ok(openapi());
     if (group === "health" && method === "GET") {
       await db.$queryRaw`SELECT 1`;
-      return ok({ status: "ok", version: "1.4.3" });
+      return ok({ status: "ok", version: "1.4.4" });
     }
     if (group === "auth") {
       const response = await accountRoute(req, id, body);
@@ -626,6 +627,8 @@ async function handle(
           });
           assert(batch, 404, "批次不存在");
           productAccess(actor, batch.productId);
+          if (method === "POST" && action === "refresh-quote")
+            return ok(await refreshVideoQuote(actor, id));
           if (method === "GET") return ok(batch);
         }
         if (!id && method === "GET") {
