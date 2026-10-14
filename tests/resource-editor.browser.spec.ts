@@ -51,7 +51,7 @@ test("creative editor expands full text and keeps footer outside scroll region",
     await expect(
       dialog.getByRole("button", { name: "收起长文本", exact: true }),
     ).toHaveAttribute("aria-expanded", "true");
-    const hook = dialog.getByLabel("开场钩子", { exact: true });
+    const hook = dialog.getByRole("textbox", { name: "开场钩子", exact: true });
     const assertExpanded = async () => {
       expect(
         await hook.evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
@@ -96,7 +96,8 @@ test("creative editor expands full text and keeps footer outside scroll region",
     const saved = await call("/concepts/" + concept.id, "GET");
     expect(saved.content.hook).toBe(text + "\n新增的一行内容");
   } finally {
-    await call("/concepts/" + concept.id, "DELETE");
-    await call("/products/" + product.id, "DELETE");
+    const latest = await call("/concepts/" + concept.id, "GET");
+    await call("/concepts/" + concept.id, "DELETE", { baseVersion: latest.version });
+    await call("/products/" + product.id, "DELETE", { baseVersion: product.version });
   }
 });
