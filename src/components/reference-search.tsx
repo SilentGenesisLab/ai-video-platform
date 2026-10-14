@@ -7,7 +7,11 @@ export default function ReferenceSearch({
   readOnly,
   onAdd,
   notify,
+  initialBrief = "",
+  coverFileId,
 }: {
+  initialBrief?: string;
+  coverFileId?: string;
   productId: string;
   files: any[];
   readOnly: boolean;
@@ -20,16 +24,19 @@ export default function ReferenceSearch({
     [brief, setBrief] = useState(""),
     [depth, setDepth] = useState("standard"),
     [type, setType] = useState("tvc"),
-    [count, setCount] = useState(30),
+    [count, setCount] = useState(50),
     [busy, setBusy] = useState(false),
     [query, setQuery] = useState(""),
     [minimum, setMinimum] = useState(0);
+  const [loaded, setLoaded] = useState(false),
+    [autoStarted, setAutoStarted] = useState(false);
   const base = "/products/" + productId + "/reference-searches";
   useEffect(() => {
     let active = true;
     api(base)
       .then((r) => {
         if (active) {
+          setLoaded(true);
           setHistory(r.items);
           setSelected(r.items[0] ?? null);
         }
@@ -62,7 +69,28 @@ export default function ReferenceSearch({
       clearInterval(timer);
     };
   }, [base, selected?.id, selected?.status]);
-  async function start() {
+  useEffect(() => {
+    if (!image) {
+      const chosen =
+        files.find((f) => f.id === coverFileId) ||
+        files.find(
+          (f) =>
+            f.status === "ready" &&
+            ["image/jpeg", "image/png", "image/webp"].includes(f.mime),
+        );
+      if (chosen) setImage(chosen.id);
+    }
+  }, [files, coverFileId, image]);
+  useEffect(() => {
+    setBrief(initialBrief);
+  }, [initialBrief]);
+  useEffect(() => {
+    if (loaded && !readOnly && image && !history.length && !autoStarted) {
+      setAutoStarted(true);
+      void start(true);
+    }
+  }, [loaded, readOnly, image, history.length, autoStarted]);
+  async function start(automatic = false) {
     setBusy(true);
     try {
       const job = await api(base, "POST", {
@@ -71,6 +99,7 @@ export default function ReferenceSearch({
         depth,
         targetCount: count,
         videoType: type,
+        automatic,
       });
       setHistory((h) => [job, ...h]);
       setSelected(job);
@@ -167,7 +196,7 @@ export default function ReferenceSearch({
             <button
               className="button primary"
               disabled={!image || busy}
-              onClick={start}
+              onClick={() => start()}
             >
               {busy ? "提交中…" : "开始检索"}
             </button>
