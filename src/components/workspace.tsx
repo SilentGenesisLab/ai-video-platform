@@ -1653,12 +1653,14 @@ export default function Workspace() {
     conceptRating,
     conceptSort,
   ]);
+  const creativeListKey =
+    "frameflow.creative.list." + actor?.teamId + "." + actor?.userId;
   useEffect(() => {
-    if (section !== "creative" || creativeDetailId) return;
+    if (!actor?.teamId || section !== "creative" || creativeDetailId) return;
     const query = new URLSearchParams(window.location.search);
     try {
       const saved = JSON.parse(
-        sessionStorage.getItem("frameflow.creative.list") || "null",
+        sessionStorage.getItem(creativeListKey) || "null",
       );
       if (saved) {
         restoringList.current = true;
@@ -1677,11 +1679,11 @@ export default function Workspace() {
       if (query.get("tab")) setTab(query.get("tab")!);
       if (query.get("productId")) setProductId(query.get("productId")!);
     } catch {}
-  }, [pathname]);
+  }, [pathname, actor?.teamId, actor?.userId]);
   useEffect(() => {
-    if (section === "creative" && !creativeDetailId)
+    if (actor?.teamId && section === "creative" && !creativeDetailId)
       sessionStorage.setItem(
-        "frameflow.creative.list",
+        creativeListKey,
         JSON.stringify({
           productId,
           planFilter,
@@ -1696,6 +1698,8 @@ export default function Workspace() {
         }),
       );
   }, [
+    actor?.teamId,
+    actor?.userId,
     section,
     creativeDetailId,
     productId,
@@ -1760,7 +1764,7 @@ export default function Workspace() {
           route +
           (productId ? "&productId=" + productId : ""),
       });
-      if (value.item?.planId || planFilter)
+      if (value.route === "storyboards" && (value.item?.planId || planFilter))
         query.set("planId", value.item?.planId ?? planFilter);
       if (value.item?.parentId) query.set("parentId", value.item.parentId);
       router.push(
@@ -1977,6 +1981,33 @@ export default function Workspace() {
           : ""),
     );
   }
+  useEffect(() => {
+    if (!creativeDetailId) return;
+    if (creativeDetailId === "new") {
+      const query = new URLSearchParams(window.location.search);
+      setProductId(query.get("productId") ?? "");
+      setPlanFilter(
+        creativeDetailRoute === "storyboards"
+          ? (query.get("planId") ?? "")
+          : "",
+      );
+      return;
+    }
+    let active = true;
+    api("/" + creativeDetailRoute + "/" + creativeDetailId)
+      .then((r) => {
+        if (active) {
+          setProductId(r.productId);
+          setPlanFilter(
+            creativeDetailRoute === "plans" ? r.id : (r.planId ?? ""),
+          );
+        }
+      })
+      .catch((e) => notify(e.message));
+    return () => {
+      active = false;
+    };
+  }, [creativeDetailId, creativeDetailRoute]);
   useEffect(() => {
     setAssistantContext({
       productId:
@@ -3385,7 +3416,7 @@ export default function Workspace() {
           readOnly={!canWrite}
           canGenerate={canGenerate}
           onGenerated={(plan: any) => {
-            setEditor({ route: "plans", item: plan });
+            openResource({ route: "plans", item: plan });
             void load();
           }}
           selectedPlanId={planFilter}

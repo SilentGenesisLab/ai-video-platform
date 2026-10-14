@@ -160,3 +160,6 @@
     max-width: 130px;
   }
 }
+.cd-asset-thumb { width: 120px; overflow: hidden; }
+.cd-asset-thumb img { width: 120px; height: 80px; object-fit: cover; border-radius: 10px; }
+.cd-asset-thumb span { display: block; overflow-wrap: anywhere; }

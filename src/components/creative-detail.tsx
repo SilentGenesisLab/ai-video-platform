@@ -107,7 +107,7 @@ function AssetThumbnail({ id, version }: { id: string; version: number }) {
     };
   }, [id, version]);
   return asset?.content?.selectedFileId ? (
-    <Picture id={asset.content.selectedFileId} />
+    <div className="cd-asset-thumb"><Picture id={asset.content.selectedFileId} /></div>
   ) : null;
 }
 async function collection(path: string) {

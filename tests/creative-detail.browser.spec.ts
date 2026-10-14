@@ -219,6 +219,15 @@ test("plan full page keeps sidebar, expands content, saves revisions, conflicts 
     "same",
   );
   await expect(page.locator(".tabs .active")).toHaveText("策划案");
+  await page.goBack();
+  await expect(body).toHaveValue("# 修改正文\n\n修改已保存");
+  await body.fill("后退需要提醒");
+  page.once("dialog", (d) => d.dismiss());
+  await page.evaluate(() => history.back());
+  await expect(body).toHaveValue("后退需要提醒");
+  page.once("dialog", (d) => d.accept());
+  await page.evaluate(() => history.back());
+  await page.waitForURL("**/studio/creative?**");
 });
 test("storyboard expands every shot, reorders stable IDs, new routes and responsive layouts", async ({
   page,
