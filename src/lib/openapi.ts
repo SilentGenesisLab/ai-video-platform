@@ -10,6 +10,46 @@ import {
 } from "./contracts";
 export function openapi() {
   const paths: Record<string, unknown> = {
+    "/api/v1/concepts/{id}/generate-plan": {
+      post: {
+        summary:
+          "Human write + generate: asynchronously create a plan through n8n. Uses immutable product/concept snapshots; text costs no personal credits. Optional draft is saved atomically with baseVersion conflict checking.",
+        parameters: [
+          {
+            in: "path",
+            name: "id",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["baseVersion"],
+                properties: {
+                  baseVersion: { type: "integer", minimum: 1 },
+                  draft: {
+                    type: "object",
+                    description:
+                      "Optional title, status and content from the editor",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description:
+              "Queued job; poll GET /jobs/{id}. Completed result includes planId and sourceVersion.",
+          },
+          "409": { description: "Stale source version or an active plan job" },
+        },
+      },
+    },
     "/api/v1/concepts/score-unscored": {
       post: {
         summary:

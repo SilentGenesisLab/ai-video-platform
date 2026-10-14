@@ -1,4 +1,5 @@
 import { scoreConcepts } from "./concept-scoring";
+import { generatePlan } from "./plan-generation";
 import { analyzeVideo } from "./video-analysis";
 import { importVideoFile } from "./video-import";
 import { emitEvent } from "../lib/events";
@@ -98,6 +99,10 @@ async function executeScoped(id: string, phase: string) {
               ? "正在导入视频"
               : "正在读取附件",
       });
+    if (phase === "plan") {
+      await generatePlan(id);
+      return;
+    }
     if (phase === "score") {
       await scoreConcepts(id);
       return;

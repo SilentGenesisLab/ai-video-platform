@@ -2733,3 +2733,5 @@ html[data-studio-theme="dark"] .concept-card footer .concept-delete {
 .key-table details ul {
   padding-left: 18px;
 }
+.plan-generation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.plan-generation-actions small { max-width: 280px; }
