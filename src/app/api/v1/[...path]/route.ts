@@ -302,7 +302,10 @@ async function handle(
         requireScope(actor, "generate");
         requireScope(actor, "write");
         const filter = z
-          .object({ productId: z.string().uuid().optional() })
+          .object({
+            productId: z.string().uuid().optional(),
+            parentId: z.string().uuid().optional(),
+          })
           .parse(body);
         return ok(
           await create(async (tx) => {
@@ -324,6 +327,7 @@ async function handle(
                 kind: "concept",
                 status: { not: "archived" },
                 ...(filter.productId ? { productId: filter.productId } : {}),
+                ...(filter.parentId ? { parentId: filter.parentId } : {}),
               },
               orderBy: { createdAt: "asc" },
             });

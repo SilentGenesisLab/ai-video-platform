@@ -33,10 +33,11 @@ export async function videoData(path: string, body?: unknown) {
   return response.json();
 }
 const inputSchema = z.object({
+  automatic: z.boolean().default(false),
   imageFileId: z.string().min(1),
   brief: z.string().max(10000).default(""),
   depth: z.enum(["quick", "standard", "deep"]).default("standard"),
-  targetCount: z.number().int().min(5).max(200).default(30),
+  targetCount: z.number().int().min(5).max(200).default(50),
   sources: z
     .array(z.string().regex(/^[a-z_]+$/))
     .max(16)
@@ -63,7 +64,21 @@ export async function referenceSearchRoute(
         requireScope(actor, "generate");
         requirePermission(actor, "product.write");
         requirePermission(actor, "creative.generate");
-        const input = inputSchema.parse(await req.json());
+        const raw = await req.json();
+        const c = product.content as any;
+        const first = await db.fileObject.findFirst({
+          where: {
+            productId,
+            status: "ready",
+            mime: { in: ["image/jpeg", "image/png", "image/webp"] },
+          },
+          orderBy: { createdAt: "asc" },
+        });
+        const input = inputSchema.parse({
+          ...raw,
+          imageFileId: raw.imageFileId || c.coverFileId || first?.id,
+          brief: raw.brief ?? c.brief ?? c.description ?? "",
+        });
         const file = await fileAccess(actor, input.imageFileId);
         assert(
           file.productId === productId &&
@@ -78,6 +93,14 @@ export async function referenceSearchRoute(
           req.headers.get("idempotency-key"),
           { path: req.nextUrl.pathname, input },
           async (tx) => {
+            if (input.automatic) {
+              await tx.$queryRaw`SELECT id FROM "Resource" WHERE id = ${productId} FOR UPDATE`;
+              const existing = await tx.job.findFirst({
+                where: { productId, kind: "reference_search" },
+                orderBy: { createdAt: "asc" },
+              });
+              if (existing) return existing;
+            }
             const job = await tx.job.create({
               data: {
                 teamId: actor.teamId,
