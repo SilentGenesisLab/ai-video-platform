@@ -155,10 +155,27 @@ test("PLAN-LIVE n8n and DeepSeek create editable treatment without personal cred
       .filter({ hasText: concept.title })
       .getByRole("button", { name: "查看与编辑", exact: true })
       .click();
+    const submission = page.waitForResponse(
+      (r) =>
+        r.url().includes(`/concepts/${concept.id}/generate-plan`) &&
+        r.request().method() === "POST",
+    );
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "生成策划案", exact: true })
       .click();
+    const submitted = await submission;
+    expect(submitted.ok(), await submitted.text()).toBeTruthy();
+    const task = await submitted.json();
+    const deadline = Date.now() + 240000;
+    while (Date.now() < deadline) {
+      const progress = await api(page, "/jobs/" + task.id);
+      expect(progress.status, progress.error ?? "Workflow failed").not.toBe(
+        "failed",
+      );
+      if (progress.status === "succeeded") break;
+      await page.waitForTimeout(2000);
+    }
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "打开策划案" })
