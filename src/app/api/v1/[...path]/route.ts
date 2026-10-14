@@ -1,4 +1,9 @@
 import {
+  requestPlan,
+  authorizePlanBridge,
+  planBridge,
+} from "@/lib/plan-generation";
+import {
   guardRequest,
   canReadBatch,
   canReadJob,
@@ -119,11 +124,22 @@ async function handle(
     if (group === "openapi.json" && method === "GET") return ok(openapi());
     if (group === "health" && method === "GET") {
       await db.$queryRaw`SELECT 1`;
-      return ok({ status: "ok", version: "1.5.1" });
+      return ok({ status: "ok", version: "1.5.2" });
     }
     if (group === "auth") {
       const response = await accountRoute(req, id, body);
       if (response) return response;
+    }
+    if (group === "internal" && id === "n8n-plan" && action) {
+      authorizePlanBridge(req.headers.get("x-aivideo-plan-secret"));
+      assert(["GET", "POST"].includes(method), 405, "不支持此操作");
+      if (method === "POST") assert(body.messages, 422, "需要策划模型输入");
+      return ok(
+        await planBridge(
+          z.string().uuid().parse(action),
+          method === "POST" ? body.messages : undefined,
+        ),
+      );
     }
     if (group === "internal") {
       assert(
@@ -293,6 +309,14 @@ async function handle(
         return result;
       };
       if (group === "auth" && id === "me" && method === "GET") return ok(actor);
+      if (
+        group === "concepts" &&
+        id &&
+        action === "generate-plan" &&
+        method === "POST"
+      ) {
+        return ok(await create((tx) => requestPlan(actor, id, body, tx)));
+      }
       if (
         group === "concepts" &&
         id === "score-unscored" &&

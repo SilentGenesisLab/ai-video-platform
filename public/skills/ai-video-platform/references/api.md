@@ -1,4 +1,4 @@
-# API reference notes · v1.5.1
+# API reference notes · v1.5.2
 
 All business endpoints start with `/api/v1`. Use JSON request bodies, Bearer authentication, and an 8–200 character `Idempotency-Key` header on creation requests. Collection reads return `{items, total?, page?, limit?}`. Resource updates use PATCH and include `baseVersion`.
 
@@ -88,5 +88,9 @@ API keys cannot use `/teams`, `/invitations`, `/platform`, phone binding, human 
 ## Reference video retrieval
 
 POST /products/{productId}/reference-searches with Idempotency-Key and {imageFileId,brief,depth:"standard",targetCount:30,videoType:"tvc"}. The image must be a ready JPG/PNG/WebP from this product, at most 15MB. GET the collection to see product search history; GET /products/{productId}/reference-searches/{jobId} every 5 seconds to refresh progress and signed results. Jobs persist across browser reloads. An uncertain submission is never automatically resubmitted. Result.run.dimensions[].videos contain stable source URLs, titles, scores and reference notes inferred from metadata; verify by watching the actual video. Add chosen references through a normal versioned product PATCH using content.referenceVideos, preserving all existing fields. Supplier credentials and other products' upstream task IDs cannot be supplied by clients.
+
+## 人类一键生成策划案
+
+`POST /api/v1/concepts/{id}/generate-plan`，参数 `{"baseVersion":1}`，返回异步 Job。仅人类登录且具有制作权限可提交；读取 `GET /api/v1/jobs/{jobId}`，成功结果包含 `planId`。该入口走 n8n 工作流，文本不扣个人积分。Agent 可继续按普通策划案写入接口保存自己的方案。
 
 Reference search defaults to 50 TVC results. Pass automatic:true to initiate only the first product search; the server serializes against product and returns an existing search instead of resubmitting. The website preselects the product image and fills the brief. Concept listings accept parentId to select a creative batch; score-unscored accepts productId and parentId and preserves existing scores. Batch status changes/deletes use the existing per-resource versioned APIs; failures remain visible for retry after refreshing.

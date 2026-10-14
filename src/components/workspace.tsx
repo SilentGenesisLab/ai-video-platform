@@ -1,5 +1,6 @@
 "use client";
 import Select from "./select";
+import ExpandingTextarea from "./expanding-textarea";
 import KeyPermissionsEditor from "./key-editor";
 import {
   permissionsOf,
@@ -250,6 +251,7 @@ function Button({
   primary = false,
   disabled = false,
   className = "",
+  "aria-expanded": ariaExpanded,
 }: any) {
   return (
     <button
@@ -257,12 +259,19 @@ function Button({
       className={`button ${primary ? "primary" : ""} ${className}`}
       onClick={onClick}
       disabled={disabled}
+      aria-expanded={ariaExpanded}
     >
       {children}
     </button>
   );
 }
-function Modal({ title, children, onClose, wide = false }: any) {
+function Modal({
+  title,
+  children,
+  onClose,
+  wide = false,
+  className = "",
+}: any) {
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -276,7 +285,7 @@ function Modal({ title, children, onClose, wide = false }: any) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={"modal " + (wide ? "wide" : "")}
+        className={"modal " + (wide ? "wide " : "") + className}
         onClick={(e) => e.stopPropagation()}
       >
         <header>
@@ -413,7 +422,7 @@ function JsonInput({ value, onChange, label }: any) {
     </label>
   );
 }
-function ContentFields({ content, setContent }: any) {
+function ContentFields({ content, setContent, expanded = false }: any) {
   return (
     <>
       {Object.entries(content)
@@ -450,7 +459,8 @@ function ContentFields({ content, setContent }: any) {
             ) : Array.isArray(value) ? (
               <label>
                 {fieldLabels[key] ?? key}
-                <textarea
+                <ExpandingTextarea
+                  expanded={expanded}
                   rows={3}
                   value={value.join("\n")}
                   onChange={(e) =>
@@ -506,7 +516,8 @@ function ContentFields({ content, setContent }: any) {
             ) : (
               <label>
                 {fieldLabels[key] ?? key}
-                <textarea
+                <ExpandingTextarea
+                  expanded={expanded}
                   rows={["body", "brief", "prompt"].includes(key) ? 7 : 2}
                   value={String(value ?? "")}
                   onChange={(e) =>
@@ -532,6 +543,8 @@ function ResourceEditor({
   onSaved,
   notify,
   readOnly = false,
+  canGenerate = false,
+  onGenerated,
 }: any) {
   const { reference: referenceAssistant } = useAssistant();
   const validation = useJsonValidation();
@@ -556,7 +569,62 @@ function ResourceEditor({
     ),
     [busy, setBusy] = useState(false),
     [tab, setTab] = useState("edit"),
-    [history, setHistory] = useState<any>(null);
+    [expanded, setExpanded] = useState(true),
+    [history, setHistory] = useState<any>(null),
+    [baseVersion, setBaseVersion] = useState(item?.version),
+    [planJob, setPlanJob] = useState<any>(null),
+    [planError, setPlanError] = useState("");
+  useEffect(() => {
+    if (route !== "concepts" || !item?.id) return;
+    const saved = sessionStorage.getItem("plan-job:" + item.id);
+    if (saved)
+      api("/jobs/" + saved)
+        .then(setPlanJob)
+        .catch(() => sessionStorage.removeItem("plan-job:" + item.id));
+  }, [item?.id, route]);
+  useEffect(() => {
+    if (!planJob || !["queued", "running"].includes(planJob.status)) return;
+    let active = true;
+    const timer = setInterval(() => {
+      void api("/jobs/" + planJob.id)
+        .then((next) => {
+          if (!active) return;
+          setPlanJob(next);
+          if (next.status === "failed" || next.status === "cancelled") {
+            setPlanError(
+              next.error || "策划案生成未完成，可重试。请查看日志状态。",
+            );
+            sessionStorage.removeItem("plan-job:" + item.id);
+          }
+        })
+        .catch((e) => {
+          if (active) setPlanError(e.message);
+        });
+    }, 2000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [planJob?.id, planJob?.status]);
+  async function createPlan() {
+    if (busy || validation.invalid) return;
+    setBusy(true);
+    setPlanError("");
+    try {
+      const job = await api(`/concepts/${item.id}/generate-plan`, "POST", {
+        baseVersion,
+        draft: { title, status, content },
+      });
+      setBaseVersion(job.input.concept.version);
+      setPlanJob(job);
+      sessionStorage.setItem("plan-job:" + item.id, job.id);
+      notify("已提交 n8n 策划任务，文本生成不扣积分", "success");
+    } catch (e) {
+      setPlanError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   const set = (key: string, value: any) =>
     setContent((c: any) => ({ ...c, [key]: value }));
   useEffect(() => {
@@ -592,7 +660,7 @@ function ResourceEditor({
           ...(route !== "products" ? { productId: pid } : {}),
           ...(planId ? { planId } : {}),
           ...(parentId ? { parentId } : {}),
-          ...(item ? { baseVersion: item.version } : {}),
+          ...(item ? { baseVersion } : {}),
         },
       );
       notify("已保存新版本", "success");
@@ -626,247 +694,319 @@ function ResourceEditor({
         }
         onClose={onClose}
         wide
+        className="resource-editor-modal"
       >
-        <div className="tabs">
-          <button
-            className={tab === "edit" ? "active" : ""}
-            onClick={() => setTab("edit")}
-          >
-            内容编辑
-          </button>
-          {item && (
+        <div className="resource-editor-scroll">
+          <div className="tabs">
             <button
-              className={tab === "history" ? "active" : ""}
-              onClick={() => setTab("history")}
+              className={tab === "edit" ? "active" : ""}
+              onClick={() => setTab("edit")}
             >
-              版本历史 <span>{item.version}</span>
+              内容编辑
             </button>
+            {item && (
+              <button
+                className={tab === "history" ? "active" : ""}
+                onClick={() => setTab("history")}
+              >
+                版本历史 <span>{item.version}</span>
+              </button>
+            )}
+          </div>
+          {tab === "edit" && (
+            <div className="resource-editor-display">
+              <Button
+                onClick={() => setExpanded((value) => !value)}
+                className="text-expansion-toggle"
+                aria-expanded={expanded}
+              >
+                <span>{expanded ? "收起长文本" : "展开全部文本"}</span>
+              </Button>
+              <span className="small muted">
+                {expanded ? "全部内容已展开，随输入自动延伸" : "紧凑显示长文本"}
+              </span>
+            </div>
           )}
-        </div>
-        {history?.staleSources?.length > 0 && (
-          <div className="notice">
-            上游资料已有更新。本次编辑不会自动覆盖旧版本的引用。
-          </div>
-        )}
-        {tab === "history" ? (
-          <div className="history">
-            {history?.revisions.map((r: any) => (
-              <details key={r.id}>
-                <summary>
-                  V{r.version} · {r.title}
-                  <span>
-                    {date(r.createdAt)} · {r.actorType}
-                  </span>
-                </summary>
-                <pre>{JSON.stringify(r.content, null, 2)}</pre>
-                <small>来源：{JSON.stringify(r.sources)}</small>
-              </details>
-            ))}
-          </div>
-        ) : (
-          <>
-            <fieldset disabled={readOnly} className="editor-fields">
-              <div className="form-grid">
-                <label>
-                  名称
-                  <input
-                    autoFocus
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="为这份创作起个名字"
-                  />
-                </label>
-                <label>
-                  状态
-                  <Select
-                    aria-label="状态"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                  >
-                    {["draft", "selected", "rejected", "ready", "archived"].map(
-                      (s) => (
+          {history?.staleSources?.length > 0 && (
+            <div className="notice">
+              上游资料已有更新。本次编辑不会自动覆盖旧版本的引用。
+            </div>
+          )}
+          {tab === "history" ? (
+            <div className="history">
+              {history?.revisions.map((r: any) => (
+                <details key={r.id}>
+                  <summary>
+                    V{r.version} · {r.title}
+                    <span>
+                      {date(r.createdAt)} · {r.actorType}
+                    </span>
+                  </summary>
+                  <pre>{JSON.stringify(r.content, null, 2)}</pre>
+                  <small>来源：{JSON.stringify(r.sources)}</small>
+                </details>
+              ))}
+            </div>
+          ) : (
+            <>
+              <fieldset disabled={readOnly} className="editor-fields">
+                <div className="form-grid">
+                  <label>
+                    名称
+                    <input
+                      autoFocus
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="为这份创作起个名字"
+                    />
+                  </label>
+                  <label>
+                    状态
+                    <Select
+                      aria-label="状态"
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
+                    >
+                      {[
+                        "draft",
+                        "selected",
+                        "rejected",
+                        "ready",
+                        "archived",
+                      ].map((s) => (
                         <option key={s} value={s}>
                           {labels[s]}
-                        </option>
-                      ),
-                    )}
-                  </Select>
-                </label>
-                {route !== "products" && (
-                  <label>
-                    所属产品
-                    <Select
-                      value={pid}
-                      disabled={!!item}
-                      onChange={(e) => {
-                        setPid(e.target.value);
-                        setPlanId("");
-                        setParentId("");
-                      }}
-                    >
-                      <option value="">选择产品</option>
-                      {products.map((p: Item) => (
-                        <option key={p.id} value={p.id}>
-                          {p.title}
                         </option>
                       ))}
                     </Select>
                   </label>
-                )}
-                {["storyboards", "assets", "scripts", "deliverables"].includes(
-                  route,
-                ) && (
-                  <label>
-                    关联策划案
-                    <Select
-                      value={planId}
-                      disabled={!!item}
-                      onChange={(e) => setPlanId(e.target.value)}
-                    >
-                      <option value="">选择策划案</option>
-                      {plans
-                        .filter((p: Item) => p.productId === pid)
-                        .map((p: Item) => (
+                  {route !== "products" && (
+                    <label>
+                      所属产品
+                      <Select
+                        value={pid}
+                        disabled={!!item}
+                        onChange={(e) => {
+                          setPid(e.target.value);
+                          setPlanId("");
+                          setParentId("");
+                        }}
+                      >
+                        <option value="">选择产品</option>
+                        {products.map((p: Item) => (
                           <option key={p.id} value={p.id}>
                             {p.title}
                           </option>
                         ))}
-                    </Select>
-                  </label>
-                )}
-                {["concepts", "plans"].includes(route) && (
-                  <label>
-                    来源{route === "concepts" ? "创意批次" : "创意"} ID
-                    <input
-                      value={parentId}
-                      disabled={!!item}
-                      onChange={(e) => setParentId(e.target.value)}
-                      placeholder="可选，关联已有成果"
-                    />
-                  </label>
-                )}
-                <ContentFields content={content} setContent={setContent} />
-              </div>
-              {route === "storyboards" && (
-                <div className="shot-editor">
-                  <div className="section-line">
-                    <h3>
-                      镜头表{" "}
-                      <span className="muted">
-                        {content.shots.length} 个镜头
-                      </span>
-                    </h3>
-                    <Button
-                      onClick={() =>
-                        set("shots", [
-                          ...content.shots,
-                          {
-                            id: crypto.randomUUID(),
-                            number:
-                              Math.max(
-                                0,
-                                ...content.shots.map((s: any) => s.number),
-                              ) + 1,
-                            duration: 5,
-                            description: "",
-                            framing: "",
-                            camera: "",
-                            movement: "",
-                            action: "",
-                            dialogue: "",
-                            sound: "",
-                            continuity: "",
-                            assets: [],
-                            imageFileId: "",
-                            candidateFileIds: [],
-                          },
-                        ])
-                      }
-                    >
-                      <Plus size={16} />
-                      添加镜头
-                    </Button>
-                  </div>
-                  {content.shots.map((shot: any, index: number) => (
-                    <details
-                      key={shot.id}
-                      className="shot-row"
-                      open={index === content.shots.length - 1}
-                    >
-                      <summary>
-                        <b>{String(shot.number).padStart(2, "0")}</b>
-                        <span>{shot.description || "待描述镜头"}</span>
-                        <small>{shot.duration}s</small>
-                      </summary>
-                      {shot.imageFileId && (
-                        <FilePreview id={shot.imageFileId} compact />
-                      )}
-                      <div className="form-grid">
-                        <ContentFields
-                          content={shot}
-                          setContent={(s: any) =>
+                      </Select>
+                    </label>
+                  )}
+                  {[
+                    "storyboards",
+                    "assets",
+                    "scripts",
+                    "deliverables",
+                  ].includes(route) && (
+                    <label>
+                      关联策划案
+                      <Select
+                        value={planId}
+                        disabled={!!item}
+                        onChange={(e) => setPlanId(e.target.value)}
+                      >
+                        <option value="">选择策划案</option>
+                        {plans
+                          .filter((p: Item) => p.productId === pid)
+                          .map((p: Item) => (
+                            <option key={p.id} value={p.id}>
+                              {p.title}
+                            </option>
+                          ))}
+                      </Select>
+                    </label>
+                  )}
+                  {["concepts", "plans"].includes(route) && (
+                    <label>
+                      来源{route === "concepts" ? "创意批次" : "创意"} ID
+                      <input
+                        value={parentId}
+                        disabled={!!item}
+                        onChange={(e) => setParentId(e.target.value)}
+                        placeholder="可选，关联已有成果"
+                      />
+                    </label>
+                  )}
+                  <ContentFields
+                    content={content}
+                    setContent={setContent}
+                    expanded={expanded}
+                  />
+                </div>
+                {route === "storyboards" && (
+                  <div className="shot-editor">
+                    <div className="section-line">
+                      <h3>
+                        镜头表{" "}
+                        <span className="muted">
+                          {content.shots.length} 个镜头
+                        </span>
+                      </h3>
+                      <Button
+                        onClick={() =>
+                          set("shots", [
+                            ...content.shots,
+                            {
+                              id: crypto.randomUUID(),
+                              number:
+                                Math.max(
+                                  0,
+                                  ...content.shots.map((s: any) => s.number),
+                                ) + 1,
+                              duration: 5,
+                              description: "",
+                              framing: "",
+                              camera: "",
+                              movement: "",
+                              action: "",
+                              dialogue: "",
+                              sound: "",
+                              continuity: "",
+                              assets: [],
+                              imageFileId: "",
+                              candidateFileIds: [],
+                            },
+                          ])
+                        }
+                      >
+                        <Plus size={16} />
+                        添加镜头
+                      </Button>
+                    </div>
+                    {content.shots.map((shot: any, index: number) => (
+                      <details
+                        key={shot.id}
+                        className="shot-row"
+                        open={index === content.shots.length - 1}
+                      >
+                        <summary>
+                          <b>{String(shot.number).padStart(2, "0")}</b>
+                          <span>{shot.description || "待描述镜头"}</span>
+                          <small>{shot.duration}s</small>
+                        </summary>
+                        {shot.imageFileId && (
+                          <FilePreview id={shot.imageFileId} compact />
+                        )}
+                        <div className="form-grid">
+                          <ContentFields
+                            expanded={expanded}
+                            content={shot}
+                            setContent={(s: any) =>
+                              set(
+                                "shots",
+                                content.shots.map((old: any, i: number) =>
+                                  i === index ? s : old,
+                                ),
+                              )
+                            }
+                          />
+                        </div>
+                        <Button
+                          onClick={() =>
                             set(
                               "shots",
-                              content.shots.map((old: any, i: number) =>
-                                i === index ? s : old,
+                              content.shots.filter(
+                                (_: any, i: number) => i !== index,
                               ),
                             )
                           }
-                        />
-                      </div>
-                      <Button
-                        onClick={() =>
-                          set(
-                            "shots",
-                            content.shots.filter(
-                              (_: any, i: number) => i !== index,
-                            ),
-                          )
-                        }
-                      >
-                        <Trash2 size={14} />
-                        移除此镜头
-                      </Button>
-                    </details>
-                  ))}
-                </div>
-              )}
-            </fieldset>
-            <footer className="modal-actions">
-              <span className="small muted">
-                {readOnly
-                  ? "只读权限，可查看内容和版本历史"
-                  : item
-                    ? `保存为 V${item.version + 1}，历史版本保留`
-                    : "保存后可继续与 Agent 协作"}
-              </span>
-              {item && !readOnly && (
-                <Button
-                  onClick={() => {
-                    void save(true);
-                  }}
-                >
-                  <Sparkles size={15} />
-                  AI 协作
-                </Button>
-              )}
-              <Button onClick={onClose}>取消</Button>
-              {!readOnly && (
-                <Button
-                  primary
-                  onClick={() => void save()}
-                  disabled={busy || !title.trim() || validation.invalid}
-                >
-                  {busy ? (
-                    <LoaderCircle className="spin" size={16} />
-                  ) : (
-                    <Check size={16} />
-                  )}
-                  保存{item ? "修订" : ""}
-                </Button>
-              )}
-            </footer>
-          </>
+                        >
+                          <Trash2 size={14} />
+                          移除此镜头
+                        </Button>
+                      </details>
+                    ))}
+                  </div>
+                )}
+              </fieldset>
+            </>
+          )}
+        </div>
+        {tab === "edit" && (
+          <footer className="modal-actions resource-editor-footer">
+            <span className="small muted">
+              {readOnly
+                ? "只读权限，可查看内容和版本历史"
+                : item
+                  ? `保存为 V${baseVersion + 1}，历史版本保留`
+                  : "保存后可继续与 Agent 协作"}
+            </span>
+            {route === "concepts" && item && !readOnly && canGenerate && (
+              <div className="plan-generation-actions">
+                {planError && (
+                  <small role="alert" className="error">
+                    {planError}
+                  </small>
+                )}
+                {planJob?.status === "succeeded" ? (
+                  <Button
+                    onClick={() => {
+                      void api("/plans/" + planJob.result.planId)
+                        .then(onGenerated)
+                        .catch((e) => setPlanError(e.message));
+                    }}
+                  >
+                    <Check size={15} /> 打开策划案
+                  </Button>
+                ) : (
+                  <Button
+                    disabled={
+                      busy ||
+                      validation.invalid ||
+                      !title.trim() ||
+                      ["queued", "running"].includes(planJob?.status)
+                    }
+                    onClick={() => void createPlan()}
+                  >
+                    {["queued", "running"].includes(planJob?.status) ? (
+                      <LoaderCircle size={15} className="spin" />
+                    ) : (
+                      <Sparkles size={15} />
+                    )}
+                    {["queued", "running"].includes(planJob?.status)
+                      ? "策划案生成中…"
+                      : planJob?.status === "failed"
+                        ? "重试生成策划案"
+                        : "生成策划案"}
+                  </Button>
+                )}
+              </div>
+            )}
+            {item && !readOnly && (
+              <Button
+                onClick={() => {
+                  void save(true);
+                }}
+              >
+                <Sparkles size={15} />
+                AI 协作
+              </Button>
+            )}
+            <Button onClick={onClose}>取消</Button>
+            {!readOnly && (
+              <Button
+                primary
+                onClick={() => void save()}
+                disabled={busy || !title.trim() || validation.invalid}
+              >
+                {busy ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <Check size={16} />
+                )}
+                保存{item ? "修订" : ""}
+              </Button>
+            )}
+          </footer>
         )}
       </Modal>
     </JsonValidation.Provider>
@@ -3240,8 +3380,14 @@ export default function Workspace() {
       )}
       {editor && (
         <ResourceEditor
+          key={`${editor.route}:${editor.item?.id ?? "new"}`}
           {...editor}
           readOnly={!canWrite}
+          canGenerate={canGenerate}
+          onGenerated={(plan: any) => {
+            setEditor({ route: "plans", item: plan });
+            void load();
+          }}
           selectedPlanId={planFilter}
           products={products}
           productId={productId}
