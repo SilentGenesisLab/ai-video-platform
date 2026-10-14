@@ -2,6 +2,22 @@ import { describe, expect, test } from "vitest";
 import { authorizePlanBridge, generatedPlan } from "../src/lib/plan-generation";
 import { planWorkflow } from "../scripts/plan-workflow";
 describe("plan workflow safety", () => {
+  test("model body expression contains no premature template delimiter", () => {
+    const workflow = planWorkflow("test-credential");
+    const expression = workflow.nodes.find(
+      (n) => n.name === "DeepSeek生成策划案",
+    )!.parameters.jsonBody;
+    expect(expression.indexOf("}}")).toBe(expression.length - 2);
+    const evaluate = new Function(
+      "$json",
+      "return (" + expression.slice(3, -2).trim() + ")",
+    );
+    const request = JSON.parse(
+      evaluate({ product: { title: "test" }, concept: { title: "test" } }),
+    );
+    expect(request.messages).toHaveLength(2);
+    expect(request.messages[0].role).toBe("system");
+  });
   test("bridge requires exact configured secret", () => {
     process.env.N8N_PLAN_SECRET = "private-test-secret";
     expect(() => authorizePlanBridge(null)).toThrow();
