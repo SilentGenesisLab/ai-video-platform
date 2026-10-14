@@ -10,6 +10,46 @@ import {
 } from "./contracts";
 export function openapi() {
   const paths: Record<string, unknown> = {
+    "/api/v1/concepts/{id}/generate-plan": {
+      post: {
+        summary:
+          "Human write + generate: asynchronously create a plan through n8n. Uses immutable product/concept snapshots; text costs no personal credits. Optional draft is saved atomically with baseVersion conflict checking.",
+        parameters: [
+          {
+            in: "path",
+            name: "id",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["baseVersion"],
+                properties: {
+                  baseVersion: { type: "integer", minimum: 1 },
+                  draft: {
+                    type: "object",
+                    description:
+                      "Optional title, status and content from the editor",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description:
+              "Queued job; poll GET /jobs/{id}. Completed result includes planId and sourceVersion.",
+          },
+          "409": { description: "Stale source version or an active plan job" },
+        },
+      },
+    },
     "/api/v1/concepts/score-unscored": {
       post: {
         summary:
@@ -832,7 +872,7 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.5.1",
+      version: "1.5.2",
       description:
         "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys enforce module permissions and explicit productScopeMode (all includes future team products, selected requires productIds). Legacy scopes remain summaries, and incompatible legacy authorization edits return 409. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
     },

@@ -1,4 +1,4 @@
-# Key authorization · 1.5.1
+# Key authorization · 1.5.2
 
 `GET /auth/me` returns current effective `permissions`, compatibility `scopes`, `productScopeMode` and `productIds` in the fixed team. An explicit `selected` scope is never treated as all products, including when empty. All mode permits current and future products in that team. Product selection cannot cross teams. An Agent run also has its original permission/product snapshot and intersects it with current Key permissions; expanding a Key does not expand an existing run.
 

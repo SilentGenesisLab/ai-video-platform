@@ -542,6 +542,8 @@ function ResourceEditor({
   onSaved,
   notify,
   readOnly = false,
+  canGenerate = false,
+  onGenerated,
 }: any) {
   const { reference: referenceAssistant } = useAssistant();
   const validation = useJsonValidation();
@@ -567,7 +569,61 @@ function ResourceEditor({
     [busy, setBusy] = useState(false),
     [tab, setTab] = useState("edit"),
     [expanded, setExpanded] = useState(true),
-    [history, setHistory] = useState<any>(null);
+    [history, setHistory] = useState<any>(null),
+    [baseVersion, setBaseVersion] = useState(item?.version),
+    [planJob, setPlanJob] = useState<any>(null),
+    [planError, setPlanError] = useState("");
+  useEffect(() => {
+    if (route !== "concepts" || !item?.id) return;
+    const saved = sessionStorage.getItem("plan-job:" + item.id);
+    if (saved)
+      api("/jobs/" + saved)
+        .then(setPlanJob)
+        .catch(() => sessionStorage.removeItem("plan-job:" + item.id));
+  }, [item?.id, route]);
+  useEffect(() => {
+    if (!planJob || !["queued", "running"].includes(planJob.status)) return;
+    let active = true;
+    const timer = setInterval(() => {
+      void api("/jobs/" + planJob.id)
+        .then((next) => {
+          if (!active) return;
+          setPlanJob(next);
+          if (next.status === "failed" || next.status === "cancelled") {
+            setPlanError(
+              next.error || "策划案生成未完成，可重试。请查看日志状态。",
+            );
+            sessionStorage.removeItem("plan-job:" + item.id);
+          }
+        })
+        .catch((e) => {
+          if (active) setPlanError(e.message);
+        });
+    }, 2000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [planJob?.id, planJob?.status]);
+  async function createPlan() {
+    if (busy || validation.invalid) return;
+    setBusy(true);
+    setPlanError("");
+    try {
+      const job = await api(`/concepts/${item.id}/generate-plan`, "POST", {
+        baseVersion,
+        draft: { title, status, content },
+      });
+      setBaseVersion(job.input.concept.version);
+      setPlanJob(job);
+      sessionStorage.setItem("plan-job:" + item.id, job.id);
+      notify("已提交 n8n 策划任务，文本生成不扣积分", "success");
+    } catch (e) {
+      setPlanError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   const set = (key: string, value: any) =>
     setContent((c: any) => ({ ...c, [key]: value }));
   useEffect(() => {
@@ -603,7 +659,7 @@ function ResourceEditor({
           ...(route !== "products" ? { productId: pid } : {}),
           ...(planId ? { planId } : {}),
           ...(parentId ? { parentId } : {}),
-          ...(item ? { baseVersion: item.version } : {}),
+          ...(item ? { baseVersion } : {}),
         },
       );
       notify("已保存新版本", "success");
@@ -880,9 +936,50 @@ function ResourceEditor({
               {readOnly
                 ? "只读权限，可查看内容和版本历史"
                 : item
-                  ? `保存为 V${item.version + 1}，历史版本保留`
+                  ? `保存为 V${baseVersion + 1}，历史版本保留`
                   : "保存后可继续与 Agent 协作"}
             </span>
+            {route === "concepts" && item && !readOnly && canGenerate && (
+              <div className="plan-generation-actions">
+                {planError && (
+                  <small role="alert" className="error">
+                    {planError}
+                  </small>
+                )}
+                {planJob?.status === "succeeded" ? (
+                  <Button
+                    onClick={() => {
+                      void api("/plans/" + planJob.result.planId)
+                        .then(onGenerated)
+                        .catch((e) => setPlanError(e.message));
+                    }}
+                  >
+                    <Check size={15} /> 打开策划案
+                  </Button>
+                ) : (
+                  <Button
+                    disabled={
+                      busy ||
+                      validation.invalid ||
+                      !title.trim() ||
+                      ["queued", "running"].includes(planJob?.status)
+                    }
+                    onClick={() => void createPlan()}
+                  >
+                    {["queued", "running"].includes(planJob?.status) ? (
+                      <LoaderCircle size={15} className="spin" />
+                    ) : (
+                      <Sparkles size={15} />
+                    )}
+                    {["queued", "running"].includes(planJob?.status)
+                      ? "策划案生成中…"
+                      : planJob?.status === "failed"
+                        ? "重试生成策划案"
+                        : "生成策划案"}
+                  </Button>
+                )}
+              </div>
+            )}
             {item && !readOnly && (
               <Button
                 onClick={() => {
@@ -3134,8 +3231,14 @@ export default function Workspace() {
       )}
       {editor && (
         <ResourceEditor
+          key={`${editor.route}:${editor.item?.id ?? "new"}`}
           {...editor}
           readOnly={!canWrite}
+          canGenerate={canGenerate}
+          onGenerated={(plan: any) => {
+            setEditor({ route: "plans", item: plan });
+            void load();
+          }}
           selectedPlanId={planFilter}
           products={products}
           productId={productId}
