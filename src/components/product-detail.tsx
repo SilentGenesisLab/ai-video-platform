@@ -1,5 +1,6 @@
 "use client";
 import Select from "./select";
+import ReferenceSearch from "./reference-search";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Markdown from "react-markdown";
@@ -1610,6 +1611,36 @@ export default function ProductDetail({
       )}
       {tab === "references" && (
         <>
+          {id !== "new" && (
+            <ReferenceSearch
+              productId={id}
+              files={files}
+              readOnly={readOnly}
+              notify={notify}
+              onAdd={(video) => {
+                if (
+                  content.referenceVideos.some((r: any) => r.url === video.url)
+                ) {
+                  notify("该视频已在参考笔记中");
+                  return;
+                }
+                change("referenceVideos", [
+                  ...content.referenceVideos,
+                  {
+                    ...reference(),
+                    title: video.title,
+                    url: video.url,
+                    source: video.platform,
+                    purpose: video.dimension,
+                    takeaways: video.reference ?? "",
+                    tags: [video.video_type ?? "参考视频"],
+                  },
+                ]);
+                notify("已加入参考笔记，请保存产品", "success");
+              }}
+            />
+          )}
+
           <section className="pd-panel">
             <div className="pd-section-title">
               <div>

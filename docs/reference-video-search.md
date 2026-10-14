@@ -1,0 +1,7 @@
+# Reference video search
+
+Product reference tab integrates videodata through server-only VIDEODATA_BASE_URL and VIDEODATA_API_KEY. Select a ready product JPG/PNG/WebP <=15MB, enter brief, depth, target count and video type. Jobs are durable; UI refreshes every five seconds while active, resumes on reopening and keeps history. Results can be filtered and added to versioned product reference notes; saving the product remains explicit. AI reference points are inferred from metadata and require viewing verification. Original stable source URLs are saved, never expiring download links.
+
+External submission is claimed once; uncertain responses require administrator confirmation and are never automatically retried. No download, relay, webhook or provider DeepSeek credential is needed. These searches use the supplied video-data service and do not trigger Frameflow video generation or approvals. Service pricing is not reported as a verified cost. Supplier keys and customer business data are not published in Skill.
+
+REST endpoints: GET/POST /api/v1/products/{productId}/reference-searches; GET /api/v1/products/{productId}/reference-searches/{jobId}. POST requires product.write, creative.read/generate and file.read. GET requires product.read and creative.read. Product/file/job ownership is checked server-side. New Job kind reference_search uses states outside media-worker recovery and does not enqueue media generation.

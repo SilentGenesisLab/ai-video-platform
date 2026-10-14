@@ -84,6 +84,48 @@ export function openapi() {
       [param("id"), { ...param("Idempotency-Key", "header"), required: true }],
     ),
   };
+  paths["/api/v1/products/{productId}/reference-searches"] = {
+    get: operation("List product reference video searches", undefined, [
+      param("productId"),
+    ]),
+    post: operation(
+      "Submit asynchronous video reference search (product.write, creative.read/generate, file.read)",
+      {
+        type: "object",
+        required: ["imageFileId"],
+        properties: {
+          imageFileId: { type: "string" },
+          brief: { type: "string", maxLength: 10000 },
+          depth: { enum: ["quick", "standard", "deep"] },
+          targetCount: { type: "integer", minimum: 5, maximum: 200 },
+          videoType: {
+            enum: [
+              "tvc",
+              "brand",
+              "ugc",
+              "product",
+              "story",
+              "cg",
+              "case",
+              "review",
+            ],
+          },
+          sources: { type: "array", items: { type: "string" } },
+        },
+      },
+      [
+        param("productId"),
+        { ...param("Idempotency-Key", "header"), required: true },
+      ],
+    ),
+  };
+  paths["/api/v1/products/{productId}/reference-searches/{jobId}"] = {
+    get: operation(
+      "Refresh task progress and signed reference results",
+      undefined,
+      [param("productId"), param("jobId")],
+    ),
+  };
   for (const [route, kind] of Object.entries(routes)) {
     const schema = {
       ...z.toJSONSchema(resourceInput),
