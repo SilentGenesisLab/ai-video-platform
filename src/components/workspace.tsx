@@ -9,6 +9,7 @@ import {
 } from "../lib/permissions";
 import {
   useEffect,
+  useLayoutEffect,
   useState,
   useCallback,
   useRef,
@@ -1721,16 +1722,18 @@ export default function Workspace() {
     conceptSort,
     page,
   ]);
-  useEffect(() => {
-    const currentUrl = window.location.href,
-      currentState = window.history.state;
+  const navigationSnapshot = useRef<any>(null);
+  useLayoutEffect(() => {
+    navigationSnapshot.current = { url: window.location.href, state: window.history.state };
+  }, [pathname]);
+  useLayoutEffect(() => {
     const pop = (e: PopStateEvent) => {
       if (
         productDirty.current &&
         !window.confirm("有未保存的修改，确定离开？")
       ) {
         e.stopImmediatePropagation();
-        window.history.pushState(currentState, "", currentUrl);
+        window.history.pushState(navigationSnapshot.current.state, "", navigationSnapshot.current.url);
       } else productDirty.current = false;
     };
     const click = (e: MouseEvent) => {
@@ -1761,7 +1764,7 @@ export default function Workspace() {
       window.removeEventListener("popstate", pop, true);
       document.removeEventListener("click", click, true);
     };
-  }, [pathname]);
+  }, []);
   function openResource(value: any) {
     if (["plans", "storyboards"].includes(value.route)) {
       if (!confirmLeaveProduct()) return;

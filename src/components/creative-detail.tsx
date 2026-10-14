@@ -161,7 +161,7 @@ export default function CreativeDetail({
   const dirty = !!draft && JSON.stringify(draft) !== baseline,
     dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
-  useEffect(() => {
+  useLayoutEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
