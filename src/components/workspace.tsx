@@ -600,7 +600,15 @@ function ResourceEditor({
     try {
       const job = await api(`/concepts/${item.id}/generate-plan`, "POST", {
         baseVersion,
-        draft: { title, status, content },
+        draft: {
+          title,
+          status,
+          content: JSON.parse(
+            JSON.stringify(content, (key, value) =>
+              key === "score" && value === "" ? undefined : value,
+            ),
+          ),
+        },
       });
       setBaseVersion(job.input.concept.version);
       setPlanJob(job);

@@ -62,7 +62,7 @@ async function main() {
               draft: {
                 title: concept.title,
                 status: "selected",
-                content: { hook: "new hook" },
+                content: { hook: "new hook", score: "" },
               },
             },
             tx,

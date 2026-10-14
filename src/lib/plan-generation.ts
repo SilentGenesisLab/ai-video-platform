@@ -43,6 +43,8 @@ export async function requestPlan(
   requireScope(actor, "generate");
   requirePermission(actor, "creative.generate");
   const data = planRequest.parse(input);
+  // An untouched numeric field in the editor is an empty string, not a score.
+  if (data.draft?.content.score === "") delete data.draft.content.score;
   assert(
     process.env.N8N_PLAN_WEBHOOK_URL && process.env.N8N_PLAN_SECRET,
     503,
