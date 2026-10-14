@@ -10,7 +10,8 @@ import {
   recommendedPermissions,
 } from "../src/lib/permissions";
 assert(
-  (process.env.DATABASE_URL?.includes("127.0.0.1:55432/frameflow_teams") || process.env.DATABASE_URL?.endsWith("/frameflow_reference_test")),
+  process.env.DATABASE_URL?.includes("127.0.0.1:55432/frameflow_teams") ||
+    process.env.DATABASE_URL?.endsWith("/frameflow_reference_test"),
   "Only isolated test database permitted",
 );
 const base = process.env.APP_URL!,
@@ -194,6 +195,20 @@ async function main() {
     await request(limited.token, path, "GET", undefined, 403);
     await request(human, path + "/" + randomUUID(), "GET", undefined, 404);
     await request(human, path, "POST", { imageFileId: randomUUID() }, 404);
+    await request(
+      human,
+      path,
+      "POST",
+      { imageFileId: file.id, automatic: true },
+      202,
+    );
+    await request(
+      human,
+      path,
+      "POST",
+      { imageFileId: file.id, automatic: true },
+      202,
+    );
     assert.equal(submissions, 1);
     console.log(
       `REFERENCE SEARCH: ${checked} API assertions; async results, replay, product ownership and permissions passed; no real inference.`,

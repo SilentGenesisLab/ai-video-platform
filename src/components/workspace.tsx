@@ -1562,6 +1562,11 @@ export default function Workspace() {
   }, [scoringJob?.id, scoringJob?.status]);
   const [itemsRoute, setItemsRoute] = useState(route);
   const [showArchived, setShowArchived] = useState(false);
+  const [batchFilter, setBatchFilter] = useState(""),
+    [batches, setBatches] = useState<any[]>([]),
+    [unscoredCount, setUnscoredCount] = useState(0),
+    [selectedConcepts, setSelectedConcepts] = useState<string[]>([]),
+    [bulkBusy, setBulkBusy] = useState(false);
   const [conceptStatus, setConceptStatus] = useState(""),
     [conceptRating, setConceptRating] = useState("all"),
     [conceptSort, setConceptSort] = useState("time-desc");
@@ -1572,6 +1577,10 @@ export default function Workspace() {
     } | null>(null),
     [conceptBusy, setConceptBusy] = useState(false),
     [scoreValue, setScoreValue] = useState("");
+  useEffect(() => {
+    setBatchFilter("");
+    setSelectedConcepts([]);
+  }, [productId]);
   const [page, setPage] = useState(1),
     [total, setTotal] = useState(0);
   useEffect(
@@ -1582,6 +1591,7 @@ export default function Workspace() {
       planFilter,
       search,
       showArchived,
+      batchFilter,
       conceptStatus,
       conceptRating,
       conceptSort,
@@ -1604,6 +1614,7 @@ export default function Workspace() {
         query.set("limit", "30");
         if (search) query.set("q", search);
         if (route === "concepts") {
+          if (batchFilter) query.set("parentId", batchFilter);
           query.set("sort", conceptSort);
           query.set("rating", conceptRating);
           if (!showArchived && conceptStatus)
@@ -1631,6 +1642,22 @@ export default function Workspace() {
       setPlans(pl.items);
       setChannels(ch.items);
       setStats(st);
+      if (route === "concepts") {
+        const scope = new URLSearchParams({ rating: "unscored", limit: "1" });
+        if (productId) scope.set("productId", productId);
+        if (batchFilter) scope.set("parentId", batchFilter);
+        const [batchList, unscored] = await Promise.all([
+          allResources(
+            "/creative-batches" + (productId ? "?productId=" + productId : ""),
+          ),
+          api("/concepts?" + scope),
+        ]);
+        if (seq === loadSequence.current) {
+          setBatches(batchList.items);
+          setUnscoredCount(unscored.total);
+          setSelectedConcepts([]);
+        }
+      }
     } catch (e) {
       notify((e as Error).message);
     } finally {
@@ -1644,6 +1671,7 @@ export default function Workspace() {
     search,
     planFilter,
     page,
+    batchFilter,
     conceptStatus,
     conceptRating,
     conceptSort,
@@ -2030,7 +2058,12 @@ export default function Workspace() {
                               const job = await api(
                                 "/concepts/score-unscored",
                                 "POST",
-                                productId ? { productId } : {},
+                                {
+                                  ...(productId ? { productId } : {}),
+                                  ...(batchFilter
+                                    ? { parentId: batchFilter }
+                                    : {}),
+                                },
                               );
                               setScoringJob(job);
                               sessionStorage.setItem(
@@ -2050,7 +2083,7 @@ export default function Workspace() {
                         >
                           {["queued", "running"].includes(scoringJob?.status)
                             ? `评分中 ${scoringJob.result?.items?.length ?? 0}/${scoringJob.result?.total ?? "…"}`
-                            : "一键评分未评分创意"}
+                            : `评分未评分创意（${unscoredCount}）`}
                         </Button>
                       )}
                       {canWrite && (
@@ -2260,7 +2293,9 @@ export default function Workspace() {
                         ? "访问密钥"
                         : "全部记录"}
                   </h3>
-                  <span className="count">{filtered.length}</span>
+                  <span className="count">
+                    {defaults[route] ? total : filtered.length}
+                  </span>
                 </div>
                 <div>
                   {!["products", "keys", "channels"].includes(section) && (
@@ -2677,299 +2712,432 @@ export default function Workspace() {
                   </table>
                 </div>
               ) : (
-                <div
-                  className={
-                    "resource-grid " +
-                    (section === "products" ? "product-grid" : "")
-                  }
-                >
-                  {filtered.map((item: Item) => (
-                    <article
-                      key={item.id}
-                      className={
-                        "resource-card " +
-                        (route === "concepts" ? "concept-card" : "")
-                      }
-                    >
-                      {canWrite && (
-                        <button
-                          type="button"
-                          className="resource-delete-button"
-                          aria-label={
-                            (item.status === "archived" ? "恢复" : "删除") +
-                            (resourceNames[route] ?? "对象") +
-                            "：" +
-                            item.title
-                          }
-                          title={item.status === "archived" ? "恢复" : "删除"}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConceptAction({
-                              item,
-                              route,
-                              kind:
-                                item.status === "archived"
-                                  ? "restore"
-                                  : "delete",
-                            });
-                          }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                      {route === "concepts" ? (
-                        <div className="concept-card-status">
-                          <Badge status={item.status} />
-                          <span className="version">V{item.version}</span>
-                        </div>
-                      ) : (
-                        <div
-                          className="card-media"
-                          onClick={() =>
-                            route === "products"
-                              ? router.push(`/studio/products/${item.id}`)
-                              : setEditor({ route, item })
-                          }
-                        >
-                          {route === "products" ||
-                          route === "assets" ||
-                          route === "deliverables" ? (
-                            <FilePreview
-                              id={
-                                item.content.coverFileId ??
-                                item.content.selectedFileId ??
-                                item.content.fileId
+                <>
+                  {route === "concepts" && (
+                    <section className="pd-panel" style={{ marginBottom: 16 }}>
+                      <div className="row-actions">
+                        <label>
+                          创意批次
+                          <Select
+                            aria-label="创意批次筛选"
+                            value={batchFilter}
+                            onChange={(e) => setBatchFilter(e.target.value)}
+                          >
+                            <option value="">全部批次</option>
+                            {batches.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.title}
+                              </option>
+                            ))}
+                          </Select>
+                        </label>
+                        <span>
+                          未评分 {unscoredCount} 条 · 已选{" "}
+                          {selectedConcepts.length} 条
+                        </span>
+                        {canWrite && (
+                          <>
+                            <Button
+                              onClick={() =>
+                                setSelectedConcepts(items.map((i) => i.id))
                               }
-                              compact
+                            >
+                              全选本页
+                            </Button>
+                            <Button onClick={() => setSelectedConcepts([])}>
+                              取消选择
+                            </Button>
+                            {["selected", "draft", "rejected", "delete"].map(
+                              (action) => (
+                                <Button
+                                  key={action}
+                                  disabled={
+                                    !selectedConcepts.length || bulkBusy
+                                  }
+                                  onClick={async () => {
+                                    if (
+                                      !confirm(
+                                        `确认${action === "delete" ? "删除" : "调整状态"}选中的 ${selectedConcepts.length} 条创意？`,
+                                      )
+                                    )
+                                      return;
+                                    setBulkBusy(true);
+                                    const results = await Promise.allSettled(
+                                      items
+                                        .filter((i) =>
+                                          selectedConcepts.includes(i.id),
+                                        )
+                                        .map((i) =>
+                                          action === "delete"
+                                            ? api(
+                                                "/concepts/" + i.id,
+                                                "DELETE",
+                                                { baseVersion: i.version },
+                                              )
+                                            : api(
+                                                "/concepts/" + i.id,
+                                                "PATCH",
+                                                {
+                                                  title: i.title,
+                                                  content: i.content,
+                                                  status: action,
+                                                  baseVersion: i.version,
+                                                },
+                                              ),
+                                        ),
+                                    );
+                                    notify(
+                                      `批量操作：成功 ${results.filter((r) => r.status === "fulfilled").length}，失败 ${results.filter((r) => r.status === "rejected").length}`,
+                                    );
+                                    setBulkBusy(false);
+                                    await load();
+                                  }}
+                                >
+                                  {
+                                    (
+                                      {
+                                        selected: "批量入选",
+                                        draft: "改为草稿",
+                                        rejected: "批量淘汰",
+                                        delete: "批量删除",
+                                      } as any
+                                    )[action]
+                                  }
+                                </Button>
+                              ),
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </section>
+                  )}
+                  <div
+                    className={
+                      "resource-grid " +
+                      (section === "products" ? "product-grid" : "")
+                    }
+                  >
+                    {filtered.map((item: Item) => (
+                      <article
+                        key={item.id}
+                        className={
+                          "resource-card " +
+                          (route === "concepts" ? "concept-card" : "")
+                        }
+                      >
+                        {route === "concepts" && canWrite && (
+                          <label
+                            style={{
+                              position: "absolute",
+                              top: 14,
+                              left: 110,
+                              zIndex: 3,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              aria-label={"选择创意：" + item.title}
+                              checked={selectedConcepts.includes(item.id)}
+                              onChange={(e) =>
+                                setSelectedConcepts((ids) =>
+                                  e.target.checked
+                                    ? [...ids, item.id]
+                                    : ids.filter((id) => id !== item.id),
+                                )
+                              }
                             />
-                          ) : route === "storyboards" ? (
-                            <div className="board-mini">
-                              {Array.from({ length: 9 }, (_, i) => (
-                                <div key={i}>
-                                  {item.content.shots[i]?.imageFileId && (
-                                    <FilePreview
-                                      id={item.content.shots[i].imageFileId}
-                                      compact
-                                    />
-                                  )}
-                                  <span>{String(i + 1).padStart(2, "0")}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className={"text-cover " + route}>
-                              <span>
-                                {route === "plans"
-                                  ? "CREATIVE TREATMENT"
-                                  : route === "scripts"
-                                    ? "PRODUCTION SCRIPT"
-                                    : "CREATIVE BATCH"}
-                              </span>
-                              <h3>
-                                {item.content.idea ??
-                                  item.content.message ??
-                                  item.title}
-                              </h3>
-                              <ArrowUpRight size={24} />
-                            </div>
-                          )}
-                          <div className="card-media-top">
+                          </label>
+                        )}
+                        {canWrite && (
+                          <button
+                            type="button"
+                            className="resource-delete-button"
+                            aria-label={
+                              (item.status === "archived" ? "恢复" : "删除") +
+                              (resourceNames[route] ?? "对象") +
+                              "：" +
+                              item.title
+                            }
+                            title={item.status === "archived" ? "恢复" : "删除"}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConceptAction({
+                                item,
+                                route,
+                                kind:
+                                  item.status === "archived"
+                                    ? "restore"
+                                    : "delete",
+                              });
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                        {route === "concepts" ? (
+                          <div className="concept-card-status">
                             <Badge status={item.status} />
                             <span className="version">V{item.version}</span>
                           </div>
-                        </div>
-                      )}
-                      <div className="card-body">
-                        <h3>
-                          {route === "products" ? (
-                            <button
-                              className="pd-card-title"
-                              onClick={() =>
-                                router.push(`/studio/products/${item.id}`)
-                              }
-                            >
-                              {item.title}
-                            </button>
-                          ) : (
-                            item.title
-                          )}
-                        </h3>
-                        <p>
-                          {route === "deliverables" &&
-                            !item.content.sourceJobIds?.length && (
-                              <span className="badge">追溯信息不完整</span>
-                            )}
-                          {route === "concepts"
-                            ? item.content.insight ||
-                              item.content.idea ||
-                              "待补充创意洞察"
-                            : (item.content.description ??
-                              item.content.hook ??
-                              item.content.objective ??
-                              item.content.purpose ??
-                              (item.content.shots
-                                ? item.content.shots.length + " 个镜头"
-                                : "每一步创作都有迹可循"))}
-                        </p>
-                        <div className="card-meta">
-                          <span>
-                            <Clock size={13} />
-                            {date(
-                              route === "concepts"
-                                ? item.createdAt
-                                : item.updatedAt,
-                            )}
-                          </span>
-                          {route === "concepts" && (
-                            <button
-                              title={item.content.evaluation?.dimensions
-                                ?.map(
-                                  (d: any) =>
-                                    `${d.label} (${d.weight * 100}%): ${d.score} — ${d.reason}`,
-                                )
-                                .join("\n")}
-                              className="concept-score"
-                              disabled={!canWrite}
-                              aria-label={"评分：" + item.title}
-                              onClick={() => {
-                                setScoreValue(
-                                  item.content.score === undefined
-                                    ? ""
-                                    : String(item.content.score),
-                                );
-                                setConceptAction({ item, kind: "score" });
-                              }}
-                            >
-                              评分{" "}
-                              {item.content.score === undefined
-                                ? "待评分"
-                                : `${item.content.score} / 10`}
-                            </button>
-                          )}
-                          {route === "concepts" && item.content.evaluation && (
-                            <details>
-                              <summary>评分依据</summary>
-                              {item.content.evaluation.dimensions.map(
-                                (d: any) => (
-                                  <p key={d.key}>
-                                    <strong>
-                                      {d.label} {d.score}/10 ·{" "}
-                                      {Math.round(d.weight * 100)}%
-                                    </strong>
-                                    <br />
-                                    {d.reason}
-                                  </p>
-                                ),
-                              )}
-                              <small>
-                                AI 评估，非转化率预测 · 源版本 V
-                                {item.content.evaluation.sourceVersion}
-                              </small>
-                            </details>
-                          )}
-                          <button
-                            className="icon-button"
-                            aria-label="复制对象 ID"
-                            onClick={() => {
-                              void navigator.clipboard.writeText(item.id);
-                              notify("对象 ID 已复制", "success");
-                            }}
+                        ) : (
+                          <div
+                            className="card-media"
+                            onClick={() =>
+                              route === "products"
+                                ? router.push(`/studio/products/${item.id}`)
+                                : setEditor({ route, item })
+                            }
                           >
-                            <Copy size={14} />
-                          </button>
-                        </div>
-                      </div>
-                      <footer>
-                        {route === "products" ? (
-                          <>
-                            <button
-                              onClick={() =>
-                                router.push(`/studio/products/${item.id}`)
-                              }
-                            >
-                              <FolderOpen size={15} />
-                              产品资料
-                            </button>
-                            <button
-                              onClick={() => {
-                                setProductId(item.id);
-                                navigate("creative", item.id);
-                              }}
-                            >
-                              开始策划
-                              <ArrowUpRight size={15} />
-                            </button>
-                          </>
-                        ) : route === "plans" ? (
-                          <>
-                            <button onClick={() => setEditor({ route, item })}>
-                              {canWrite ? "编辑策划" : "查看策划"}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setProductId(item.productId!);
-                                setPlanFilter(item.id);
-                                setTab("storyboards");
-                              }}
-                            >
-                              查看分镜
-                              <ArrowUpRight size={15} />
-                            </button>
-                          </>
-                        ) : route === "storyboards" ? (
-                          <>
-                            <button onClick={() => setEditor({ route, item })}>
-                              {canWrite ? "编辑分镜表" : "查看分镜表"}
-                            </button>
-                            {canGenerate && (
+                            {route === "products" ||
+                            route === "assets" ||
+                            route === "deliverables" ? (
+                              <FilePreview
+                                id={
+                                  item.content.coverFileId ??
+                                  item.content.selectedFileId ??
+                                  item.content.fileId
+                                }
+                                compact
+                              />
+                            ) : route === "storyboards" ? (
+                              <div className="board-mini">
+                                {Array.from({ length: 9 }, (_, i) => (
+                                  <div key={i}>
+                                    {item.content.shots[i]?.imageFileId && (
+                                      <FilePreview
+                                        id={item.content.shots[i].imageFileId}
+                                        compact
+                                      />
+                                    )}
+                                    <span>
+                                      {String(i + 1).padStart(2, "0")}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className={"text-cover " + route}>
+                                <span>
+                                  {route === "plans"
+                                    ? "CREATIVE TREATMENT"
+                                    : route === "scripts"
+                                      ? "PRODUCTION SCRIPT"
+                                      : "CREATIVE BATCH"}
+                                </span>
+                                <h3>
+                                  {item.content.idea ??
+                                    item.content.message ??
+                                    item.title}
+                                </h3>
+                                <ArrowUpRight size={24} />
+                              </div>
+                            )}
+                            <div className="card-media-top">
+                              <Badge status={item.status} />
+                              <span className="version">V{item.version}</span>
+                            </div>
+                          </div>
+                        )}
+                        <div className="card-body">
+                          <h3>
+                            {route === "products" ? (
                               <button
+                                className="pd-card-title"
                                 onClick={() =>
-                                  api(
-                                    "/storyboards/" + item.id + "/overview",
-                                    "POST",
-                                    {},
-                                  )
-                                    .then(() =>
-                                      notify(
-                                        "总览任务已创建，请在日志中查看",
-                                        "success",
-                                      ),
-                                    )
-                                    .catch((e) => notify(e.message))
+                                  router.push(`/studio/products/${item.id}`)
                                 }
                               >
-                                拼接总览
-                                <Grid2X2 size={15} />
+                                {item.title}
+                              </button>
+                            ) : (
+                              item.title
+                            )}
+                          </h3>
+                          <p>
+                            {route === "deliverables" &&
+                              !item.content.sourceJobIds?.length && (
+                                <span className="badge">追溯信息不完整</span>
+                              )}
+                            {route === "concepts"
+                              ? item.content.insight ||
+                                item.content.idea ||
+                                "待补充创意洞察"
+                              : (item.content.description ??
+                                item.content.hook ??
+                                item.content.objective ??
+                                item.content.purpose ??
+                                (item.content.shots
+                                  ? item.content.shots.length + " 个镜头"
+                                  : "每一步创作都有迹可循"))}
+                          </p>
+                          <div className="card-meta">
+                            <span>
+                              <Clock size={13} />
+                              {date(
+                                route === "concepts"
+                                  ? item.createdAt
+                                  : item.updatedAt,
+                              )}
+                            </span>
+                            {route === "concepts" && (
+                              <button
+                                title={item.content.evaluation?.dimensions
+                                  ?.map(
+                                    (d: any) =>
+                                      `${d.label} (${d.weight * 100}%): ${d.score} — ${d.reason}`,
+                                  )
+                                  .join("\n")}
+                                className="concept-score"
+                                disabled={!canWrite}
+                                aria-label={"评分：" + item.title}
+                                onClick={() => {
+                                  setScoreValue(
+                                    item.content.score === undefined
+                                      ? ""
+                                      : String(item.content.score),
+                                  );
+                                  setConceptAction({ item, kind: "score" });
+                                }}
+                              >
+                                评分{" "}
+                                {item.content.score === undefined
+                                  ? "待评分"
+                                  : `${item.content.score} / 10`}
                               </button>
                             )}
-                          </>
-                        ) : (
-                          <>
-                            <button onClick={() => setEditor({ route, item })}>
-                              {canWrite ? "查看与编辑" : "查看详情"}
-                              <ArrowUpRight size={15} />
-                            </button>
+                            {route === "concepts" &&
+                              item.content.evaluation && (
+                                <details>
+                                  <summary>评分依据</summary>
+                                  {item.content.evaluation.dimensions.map(
+                                    (d: any) => (
+                                      <p key={d.key}>
+                                        <strong>
+                                          {d.label} {d.score}/10 ·{" "}
+                                          {Math.round(d.weight * 100)}%
+                                        </strong>
+                                        <br />
+                                        {d.reason}
+                                      </p>
+                                    ),
+                                  )}
+                                  <small>
+                                    AI 评估，非转化率预测 · 源版本 V
+                                    {item.content.evaluation.sourceVersion}
+                                  </small>
+                                </details>
+                              )}
                             <button
+                              className="icon-button"
+                              aria-label="复制对象 ID"
                               onClick={() => {
-                                setProductId(item.productId ?? item.id);
-                                referenceAssistant(item);
+                                void navigator.clipboard.writeText(item.id);
+                                notify("对象 ID 已复制", "success");
                               }}
                             >
+                              <Copy size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        <footer>
+                          {route === "products" ? (
+                            <>
+                              <button
+                                onClick={() =>
+                                  router.push(`/studio/products/${item.id}`)
+                                }
+                              >
+                                <FolderOpen size={15} />
+                                产品资料
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setProductId(item.id);
+                                  navigate("creative", item.id);
+                                }}
+                              >
+                                开始策划
+                                <ArrowUpRight size={15} />
+                              </button>
+                            </>
+                          ) : route === "plans" ? (
+                            <>
+                              <button
+                                onClick={() => setEditor({ route, item })}
+                              >
+                                {canWrite ? "编辑策划" : "查看策划"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setProductId(item.productId!);
+                                  setPlanFilter(item.id);
+                                  setTab("storyboards");
+                                }}
+                              >
+                                查看分镜
+                                <ArrowUpRight size={15} />
+                              </button>
+                            </>
+                          ) : route === "storyboards" ? (
+                            <>
+                              <button
+                                onClick={() => setEditor({ route, item })}
+                              >
+                                {canWrite ? "编辑分镜表" : "查看分镜表"}
+                              </button>
+                              {canGenerate && (
+                                <button
+                                  onClick={() =>
+                                    api(
+                                      "/storyboards/" + item.id + "/overview",
+                                      "POST",
+                                      {},
+                                    )
+                                      .then(() =>
+                                        notify(
+                                          "总览任务已创建，请在日志中查看",
+                                          "success",
+                                        ),
+                                      )
+                                      .catch((e) => notify(e.message))
+                                  }
+                                >
+                                  拼接总览
+                                  <Grid2X2 size={15} />
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => setEditor({ route, item })}
+                              >
+                                {canWrite ? "查看与编辑" : "查看详情"}
+                                <ArrowUpRight size={15} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setProductId(item.productId ?? item.id);
+                                  referenceAssistant(item);
+                                }}
+                              >
+                                <Sparkles size={15} />
+                                AI 协作
+                              </button>
+                            </>
+                          )}
+                          {(route === "storyboards" ||
+                            route === "products") && (
+                            <button onClick={() => referenceAssistant(item)}>
                               <Sparkles size={15} />
                               AI 协作
                             </button>
-                          </>
-                        )}
-                        {(route === "storyboards" || route === "products") && (
-                          <button onClick={() => referenceAssistant(item)}>
-                            <Sparkles size={15} />
-                            AI 协作
-                          </button>
-                        )}
-                      </footer>
-                    </article>
-                  ))}
-                </div>
+                          )}
+                        </footer>
+                      </article>
+                    ))}
+                  </div>
+                </>
               )}
               {defaults[route] && total > 30 && (
                 <div className="section-line" aria-label="列表分页">

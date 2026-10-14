@@ -132,7 +132,7 @@ export function openapi() {
       "Submit asynchronous video reference search (product.write, creative.read/generate, file.read)",
       {
         type: "object",
-        required: ["imageFileId"],
+        required: [],
         properties: {
           imageFileId: { type: "string" },
           brief: { type: "string", maxLength: 10000 },
