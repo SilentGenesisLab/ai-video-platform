@@ -181,9 +181,13 @@ export async function planBridge(jobId: string, messages?: unknown) {
   });
 }
 
-export async function persistPlan(jobId: string, output: unknown) {
+export async function persistPlan(
+  jobId: string,
+  output: unknown,
+  transaction?: Tx,
+) {
   const data = generatedPlan.parse(output);
-  return db.$transaction(async (tx) => {
+  const save = async (tx: Tx) => {
     await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${jobId} FOR UPDATE`;
     const job = await tx.job.findUniqueOrThrow({ where: { id: jobId } });
     if (job.status === "succeeded") return job.result;
@@ -227,5 +231,6 @@ export async function persistPlan(jobId: string, output: unknown) {
       ...result,
     });
     return result;
-  });
+  };
+  return transaction ? save(transaction) : db.$transaction(save);
 }

@@ -22,7 +22,7 @@ async function main() {
   console.log(
     "Skill package built: " +
       Object.keys(files).length +
-      " files, version 1.5.1",
+      " files, version " + JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")).version,
   );
 }
 void main();
