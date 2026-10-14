@@ -2733,3 +2733,42 @@ html[data-studio-theme="dark"] .concept-card footer .concept-delete {
 .key-table details ul {
   padding-left: 18px;
 }
+.modal.resource-editor-modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: min(90dvh, 1100px);
+  background: #f6f7f9;
+  padding-bottom: 18px;
+}
+.resource-editor-modal > header {
+  flex-shrink: 0;
+}
+.resource-editor-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 0 4px 18px;
+}
+.resource-editor-display {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 20px;
+}
+.resource-editor-modal .form-grid > div {
+  min-width: 0;
+}
+.resource-editor-modal .modal-actions.resource-editor-footer {
+  position: static;
+  flex: 0 0 auto;
+  margin: 12px 4px 0;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e8ecf0;
+  border-radius: 14px;
+  box-shadow: 0 3px 12px #15212205;
+}
