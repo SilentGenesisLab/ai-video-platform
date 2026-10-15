@@ -305,6 +305,7 @@ async function executeScoped(id: string, phase: string) {
           where: { id },
           data: {
             status: state,
+            actualChannel: result.channel ?? job.actualChannel,
             error: result.error
               ? String(
                   redact(
