@@ -1,3 +1,4 @@
+import Workspace from "@/components/workspace";
 import { AssistantProvider } from "@/components/assistant";
 export default function StudioLayout({
   children,
@@ -8,6 +9,7 @@ export default function StudioLayout({
     <AssistantProvider
       streamEnabled={process.env.ASSISTANT_STREAM_ENABLED !== "false"}
     >
+      <Workspace />
       {children}
     </AssistantProvider>
   );

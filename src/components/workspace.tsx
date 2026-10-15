@@ -9,6 +9,7 @@ import {
 } from "../lib/permissions";
 import {
   useEffect,
+  useLayoutEffect,
   useState,
   useCallback,
   useRef,
@@ -58,6 +59,7 @@ import {
 import Markdown from "react-markdown";
 import { useAssistant } from "./assistant";
 import ProductDetail from "./product-detail";
+import CreativeDetail from "./creative-detail";
 import AccountMenu from "./account-menu";
 import { api, Item, labels } from "./api";
 const resourceNames: Record<string, string> = {
@@ -1526,6 +1528,16 @@ export default function Workspace() {
     router = useRouter(),
     section = pathname.split("/")[2] ?? "products",
     nav = navigation.find((n) => n.id === section) ?? navigation[0];
+  const creativeDetailRoute =
+    section === "creative" &&
+    ["plans", "storyboards"].includes(pathname.split("/")[3])
+      ? pathname.split("/")[3]
+      : undefined;
+  const creativeDetailId = creativeDetailRoute
+    ? pathname.split("/")[4]
+    : undefined;
+  const restorePage = useRef<number | null>(null);
+  const restoringList = useRef(false);
   const productDetailId =
     section === "products" ? pathname.split("/")[3] : undefined;
   const productDirty = useRef(false);
@@ -1533,7 +1545,7 @@ export default function Workspace() {
     productDirty.current = dirty;
   }, []);
   const confirmLeaveProduct = () =>
-    !productDirty.current || window.confirm("产品有未保存的修改，确定离开？");
+    !productDirty.current || window.confirm("有未保存的修改，确定离开？");
   const [actor, setActor] = useState<any>(null),
     [products, setProducts] = useState<Item[]>([]),
     [plans, setPlans] = useState<Item[]>([]),
@@ -1629,25 +1641,153 @@ export default function Workspace() {
     [conceptBusy, setConceptBusy] = useState(false),
     [scoreValue, setScoreValue] = useState("");
   useEffect(() => {
-    setBatchFilter("");
+    if (!restoringList.current) setBatchFilter("");
     setSelectedConcepts([]);
   }, [productId]);
   const [page, setPage] = useState(1),
     [total, setTotal] = useState(0);
-  useEffect(
-    () => setPage(1),
-    [
-      route,
-      productId,
-      planFilter,
-      search,
-      showArchived,
-      batchFilter,
-      conceptStatus,
-      conceptRating,
-      conceptSort,
-    ],
-  );
+  useEffect(() => {
+    if (restorePage.current !== null) {
+      setPage(restorePage.current);
+      restorePage.current = null;
+    } else setPage(1);
+  }, [
+    route,
+    productId,
+    planFilter,
+    search,
+    showArchived,
+    batchFilter,
+    conceptStatus,
+    conceptRating,
+    conceptSort,
+  ]);
+  const creativeListKey =
+    "frameflow.creative.list." + actor?.teamId + "." + actor?.userId;
+  useEffect(() => {
+    if (!actor?.teamId || section !== "creative" || creativeDetailId) return;
+    const query = new URLSearchParams(window.location.search);
+    try {
+      const saved = JSON.parse(
+        sessionStorage.getItem(creativeListKey) || "null",
+      );
+      if (saved) {
+        restoringList.current = true;
+        restorePage.current = saved.page;
+        setProductId(saved.productId);
+        setPlanFilter(saved.planFilter);
+        setSearch(saved.search);
+        setTab(saved.tab);
+        setShowArchived(saved.showArchived);
+        setBatchFilter(saved.batchFilter || "");
+        setConceptStatus(saved.conceptStatus);
+        setConceptRating(saved.conceptRating);
+        setConceptSort(saved.conceptSort);
+        setPage(saved.page);
+      }
+      if (query.get("tab")) setTab(query.get("tab")!);
+      if (query.get("productId")) setProductId(query.get("productId")!);
+    } catch {}
+  }, [pathname, actor?.teamId, actor?.userId]);
+  useEffect(() => {
+    if (actor?.teamId && section === "creative" && !creativeDetailId)
+      sessionStorage.setItem(
+        creativeListKey,
+        JSON.stringify({
+          productId,
+          planFilter,
+          search,
+          tab,
+          showArchived,
+          batchFilter,
+          conceptStatus,
+          conceptRating,
+          conceptSort,
+          page,
+        }),
+      );
+  }, [
+    actor?.teamId,
+    actor?.userId,
+    section,
+    creativeDetailId,
+    productId,
+    planFilter,
+    search,
+    tab,
+    showArchived,
+    batchFilter,
+    conceptStatus,
+    conceptRating,
+    conceptSort,
+    page,
+  ]);
+  const navigationSnapshot = useRef<any>(null);
+  useLayoutEffect(() => {
+    navigationSnapshot.current = { url: window.location.href, state: window.history.state };
+  }, [pathname]);
+  useLayoutEffect(() => {
+    const pop = (e: PopStateEvent) => {
+      if (
+        productDirty.current &&
+        !window.confirm("有未保存的修改，确定离开？")
+      ) {
+        e.stopImmediatePropagation();
+        window.history.pushState(navigationSnapshot.current.state, "", navigationSnapshot.current.url);
+      } else productDirty.current = false;
+    };
+    const click = (e: MouseEvent) => {
+      const link = (e.target as Element)?.closest("a");
+      if (
+        !link ||
+        link.target === "_blank" ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.shiftKey ||
+        !productDirty.current
+      )
+        return;
+      const target = new URL(link.href);
+      if (
+        target.origin !== window.location.origin ||
+        target.pathname !== window.location.pathname
+      ) {
+        if (!window.confirm("有未保存的修改，确定离开？")) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        } else productDirty.current = false;
+      }
+    };
+    window.addEventListener("popstate", pop, true);
+    document.addEventListener("click", click, true);
+    return () => {
+      window.removeEventListener("popstate", pop, true);
+      document.removeEventListener("click", click, true);
+    };
+  }, []);
+  function openResource(value: any) {
+    if (["plans", "storyboards"].includes(value.route)) {
+      if (!confirmLeaveProduct()) return;
+      const query = new URLSearchParams({
+        productId: value.item?.productId ?? productId,
+        returnTo:
+          "/studio/creative?tab=" +
+          route +
+          (productId ? "&productId=" + productId : ""),
+      });
+      if (value.route === "storyboards" && (value.item?.planId || planFilter))
+        query.set("planId", value.item?.planId ?? planFilter);
+      if (value.item?.parentId) query.set("parentId", value.item.parentId);
+      router.push(
+        "/studio/creative/" +
+          value.route +
+          "/" +
+          (value.item?.id ?? "new") +
+          "?" +
+          query,
+      );
+    } else setEditor(value);
+  }
   const load = useCallback(async () => {
     const seq = ++loadSequence.current;
     setLoading(true);
@@ -1752,7 +1892,7 @@ export default function Workspace() {
           setTab(routes[r.kind]);
           setProductId(r.productId ?? "");
           if (r.kind === "product") router.replace(`/studio/products/${r.id}`);
-          else setEditor({ route: routes[r.kind], item: r });
+          else openResource({ route: routes[r.kind], item: r });
         })
         .catch((e) => notify(e.message));
   }, [pathname, notify]);
@@ -1852,6 +1992,33 @@ export default function Workspace() {
           : ""),
     );
   }
+  useEffect(() => {
+    if (!creativeDetailId) return;
+    if (creativeDetailId === "new") {
+      const query = new URLSearchParams(window.location.search);
+      setProductId(query.get("productId") ?? "");
+      setPlanFilter(
+        creativeDetailRoute === "storyboards"
+          ? (query.get("planId") ?? "")
+          : "",
+      );
+      return;
+    }
+    let active = true;
+    api("/" + creativeDetailRoute + "/" + creativeDetailId)
+      .then((r) => {
+        if (active) {
+          setProductId(r.productId);
+          setPlanFilter(
+            creativeDetailRoute === "plans" ? r.id : (r.planId ?? ""),
+          );
+        }
+      })
+      .catch((e) => notify(e.message));
+    return () => {
+      active = false;
+    };
+  }, [creativeDetailId, creativeDetailRoute]);
   useEffect(() => {
     setAssistantContext({
       productId:
@@ -2035,7 +2202,19 @@ export default function Workspace() {
           </div>
         </header>
         <div className="page-body">
-          {productDetailId ? (
+          {creativeDetailId ? (
+            actor && (
+              <CreativeDetail
+                key={creativeDetailRoute + "/" + creativeDetailId}
+                route={creativeDetailRoute}
+                id={creativeDetailId}
+                readOnly={!canWrite}
+                notify={notify}
+                onDirtyChange={onProductDirty}
+                onReference={referenceAssistant}
+              />
+            )
+          ) : productDetailId ? (
             actor && (
               <ProductDetail
                 key={productDetailId}
@@ -2143,7 +2322,7 @@ export default function Workspace() {
                           onClick={() =>
                             section === "products"
                               ? router.push("/studio/products/new")
-                              : setEditor({
+                              : openResource({
                                   route:
                                     route === "production-batches"
                                       ? "scripts"
@@ -2936,7 +3115,7 @@ export default function Workspace() {
                             onClick={() =>
                               route === "products"
                                 ? router.push(`/studio/products/${item.id}`)
-                                : setEditor({ route, item })
+                                : openResource({ route, item })
                             }
                           >
                             {route === "products" ||
@@ -2991,11 +3170,15 @@ export default function Workspace() {
                         )}
                         <div className="card-body">
                           <h3>
-                            {route === "products" ? (
+                            {["products", "plans", "storyboards"].includes(
+                              route,
+                            ) ? (
                               <button
                                 className="pd-card-title"
                                 onClick={() =>
-                                  router.push(`/studio/products/${item.id}`)
+                                  route === "products"
+                                    ? router.push(`/studio/products/${item.id}`)
+                                    : openResource({ route, item })
                                 }
                               >
                                 {item.title}
@@ -3114,7 +3297,7 @@ export default function Workspace() {
                           ) : route === "plans" ? (
                             <>
                               <button
-                                onClick={() => setEditor({ route, item })}
+                                onClick={() => openResource({ route, item })}
                               >
                                 {canWrite ? "编辑策划" : "查看策划"}
                               </button>
@@ -3132,7 +3315,7 @@ export default function Workspace() {
                           ) : route === "storyboards" ? (
                             <>
                               <button
-                                onClick={() => setEditor({ route, item })}
+                                onClick={() => openResource({ route, item })}
                               >
                                 {canWrite ? "编辑分镜表" : "查看分镜表"}
                               </button>
@@ -3161,7 +3344,7 @@ export default function Workspace() {
                           ) : (
                             <>
                               <button
-                                onClick={() => setEditor({ route, item })}
+                                onClick={() => openResource({ route, item })}
                               >
                                 {canWrite ? "查看与编辑" : "查看详情"}
                                 <ArrowUpRight size={15} />
@@ -3244,7 +3427,7 @@ export default function Workspace() {
           readOnly={!canWrite}
           canGenerate={canGenerate}
           onGenerated={(plan: any) => {
-            setEditor({ route: "plans", item: plan });
+            openResource({ route: "plans", item: plan });
             void load();
           }}
           selectedPlanId={planFilter}
