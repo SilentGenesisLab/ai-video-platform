@@ -1,5 +1,6 @@
 import { scoreConcepts } from "./concept-scoring";
 import { nextImageChannel } from "./image-fallback";
+import { canUseOpenRouter } from "./openrouter";
 import { generatePlan } from "./plan-generation";
 import { analyzeVideo } from "./video-analysis";
 import { importVideoFile } from "./video-import";
@@ -225,7 +226,15 @@ async function executeScoped(id: string, phase: string) {
         (job.input as any).channelSnapshot?.baseUrl,
       );
       const state = result.status ?? result.state;
-      const fallback = nextImageChannel(job, result);
+      let fallback = nextImageChannel(job, result);
+      const openrouter =
+        !fallback && canUseOpenRouter(job, result)
+          ? await db.channel.findFirst({
+              where: { provider: "openrouter", enabled: true },
+              orderBy: { createdAt: "asc" },
+            })
+          : null;
+      if (openrouter) fallback = "openrouter";
       if (fallback && !job.cancelRequested) {
         await db.$transaction(async (tx) => {
           const attempts = [
@@ -248,8 +257,19 @@ async function executeScoped(id: string, phase: string) {
               upstreamId: null,
               actualChannel: null,
               error: null,
+              ...(openrouter ? { channelId: openrouter.id } : {}),
               input: json({
                 ...(job.input as any),
+                ...(openrouter
+                  ? {
+                      openrouterAttempted: true,
+                      channelSnapshot: {
+                        id: openrouter.id,
+                        provider: openrouter.provider,
+                        baseUrl: openrouter.baseUrl,
+                      },
+                    }
+                  : {}),
                 fallbackChannel: fallback,
                 fallbackModel:
                   (job.input as any).model === "gpt-image-2.5"
@@ -281,11 +301,20 @@ async function executeScoped(id: string, phase: string) {
         ["succeeded", "completed", "failed", "cancelled"].includes(state) &&
         (job.input as any).usageId
       )
-        await usageFromResult(
-          (job.input as any).usageId,
-          result,
-          ["succeeded", "completed"].includes(state),
-        );
+        if (result.channel === "openrouter")
+          await settleUsage((job.input as any).usageId, null, "unknown", {
+            supplier: "openrouter",
+            currency: "USD",
+            usage: result.usage,
+            cost: result.cost,
+            reason: "供应商美元费用待人民币对账",
+          });
+        else
+          await usageFromResult(
+            (job.input as any).usageId,
+            result,
+            ["succeeded", "completed"].includes(state),
+          );
       if (["succeeded", "completed"].includes(state)) {
         await db.$transaction(async (tx) => {
           await tx.job.update({

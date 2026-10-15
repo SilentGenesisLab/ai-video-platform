@@ -6,7 +6,13 @@ import { encrypt } from "./security";
 import { audit, json, Tx } from "./services";
 const schema = z.object({
   name: z.string().min(1).max(100),
-  provider: z.enum(["aicentre", "deepseek", "volcengine", "bocha"]),
+  provider: z.enum([
+    "aicentre",
+    "deepseek",
+    "volcengine",
+    "bocha",
+    "openrouter",
+  ]),
   baseUrl: z
     .url()
     .refine((v) => new URL(v).protocol === "https:", "渠道须为 HTTPS"),

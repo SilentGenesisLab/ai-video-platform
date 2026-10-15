@@ -20,8 +20,10 @@ export async function reserveSubmission(
       409,
       "渠道已停用或地址已改变，请重新创建批次",
     );
-    const rows=await tx.$queryRaw<{count:bigint}[]>`SELECT count(*) FROM "Job" WHERE "channelId"=${channelId} AND status IN ('submitting','running')`;
-    const active=Number(rows[0].count);
+    const rows = await tx.$queryRaw<
+      { count: bigint }[]
+    >`SELECT count(*) FROM "Job" WHERE "channelId"=${channelId} AND status IN ('submitting','running')`;
+    const active = Number(rows[0].count);
     if (active >= channel.concurrency) return false;
     const result = await tx.job.updateMany({
       where: {
@@ -45,7 +47,7 @@ export function providerResult(result: any) {
           amount: result.billed_cost,
           currency: result.currency ?? null,
         }
-      : { type: "unknown", amount: null, currency: null };
+      : (result.cost ?? { type: "unknown", amount: null, currency: null });
   return json({
     status: result.status ?? result.state,
     result_urls:

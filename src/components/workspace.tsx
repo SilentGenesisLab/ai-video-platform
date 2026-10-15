@@ -1098,6 +1098,12 @@ function ChannelEditor({ item, onClose, onSaved, notify }: any) {
               onChange={(e) => {
                 const provider = e.target.value;
                 const presets: any = {
+                  openrouter: {
+                    baseUrl: "https://openrouter.ai/api",
+                    models: {
+                      image: ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst"],
+                    },
+                  },
                   volcengine: {
                     baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
                     models: {
@@ -1128,6 +1134,7 @@ function ChannelEditor({ item, onClose, onSaved, notify }: any) {
               }}
             >
               <option value="aicentre">AI Centre</option>
+              <option value="openrouter">OpenRouter · 图片兜底</option>
               <option value="deepseek">DeepSeek</option>
               <option value="volcengine">火山方舟 · 豆包视频理解</option>
               <option value="bocha">博查 · 联网搜索</option>
@@ -1724,7 +1731,10 @@ export default function Workspace() {
   ]);
   const navigationSnapshot = useRef<any>(null);
   useLayoutEffect(() => {
-    navigationSnapshot.current = { url: window.location.href, state: window.history.state };
+    navigationSnapshot.current = {
+      url: window.location.href,
+      state: window.history.state,
+    };
   }, [pathname]);
   useLayoutEffect(() => {
     const pop = (e: PopStateEvent) => {
@@ -1733,7 +1743,11 @@ export default function Workspace() {
         !window.confirm("有未保存的修改，确定离开？")
       ) {
         e.stopImmediatePropagation();
-        window.history.pushState(navigationSnapshot.current.state, "", navigationSnapshot.current.url);
+        window.history.pushState(
+          navigationSnapshot.current.state,
+          "",
+          navigationSnapshot.current.url,
+        );
       } else productDirty.current = false;
     };
     const click = (e: MouseEvent) => {

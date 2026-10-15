@@ -35,7 +35,9 @@ export async function validateEntry(
     where: { id: entry.channelId },
   });
   assert(
-    channel?.enabled && channel.provider === "aicentre",
+    channel?.enabled &&
+      (channel.provider === "aicentre" ||
+        (kind === "image" && channel.provider === "openrouter")),
     422,
     "生成渠道不可用",
   );

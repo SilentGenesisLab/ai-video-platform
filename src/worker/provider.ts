@@ -2,6 +2,7 @@ import { db } from "../lib/db";
 import { decrypt } from "../lib/security";
 import { readUrl } from "../lib/storage";
 import { assert } from "../lib/errors";
+import { openRouterRequest } from "./openrouter";
 export async function providerRequest(
   channelId: string,
   path: string,
@@ -21,6 +22,8 @@ export async function providerRequest(
     409,
     "渠道地址与提交快照不同，请恢复原地址以查询既有任务",
   );
+  if (channel.provider === "openrouter")
+    return openRouterRequest(channel, path, body);
   const response = await fetch(channel.baseUrl.replace(/\/$/, "") + path, {
     method: body ? "POST" : "GET",
     headers: {
@@ -79,6 +82,16 @@ export function generationPayload(job: {
   return body;
 }
 export async function downloadResult(url: string) {
+  if (url.startsWith("data:")) {
+    const match =
+      /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(url);
+    assert(
+      match && match[2].length <= 48 * 1024 * 1024,
+      422,
+      "无效或过大的图片响应",
+    );
+    return { buffer: Buffer.from(match[2], "base64"), mime: match[1] };
+  }
   let current = new URL(url);
   for (let hop = 0; hop < 4; hop++) {
     const hosts = (
