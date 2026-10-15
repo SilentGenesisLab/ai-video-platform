@@ -1,4 +1,5 @@
 import { scoreConcepts } from "./concept-scoring";
+import { nextImageChannel } from "./image-fallback";
 import { generatePlan } from "./plan-generation";
 import { analyzeVideo } from "./video-analysis";
 import { importVideoFile } from "./video-import";
@@ -224,6 +225,58 @@ async function executeScoped(id: string, phase: string) {
         (job.input as any).channelSnapshot?.baseUrl,
       );
       const state = result.status ?? result.state;
+      const fallback = nextImageChannel(job, result);
+      if (fallback && !job.cancelRequested) {
+        await db.$transaction(async (tx) => {
+          const attempts = [
+            ...((job.input as any).channelAttempts ?? []),
+            {
+              upstreamId: job.upstreamId,
+              channel:
+                result.channel ??
+                (job.input as any).fallbackChannel ??
+                job.actualChannel ??
+                "grsai",
+              result: redact(result),
+            },
+          ];
+          await tx.job.update({
+            where: { id },
+            data: {
+              status: "queued",
+              phase: "submit",
+              upstreamId: null,
+              actualChannel: null,
+              error: null,
+              input: json({
+                ...(job.input as any),
+                fallbackChannel: fallback,
+                fallbackModel:
+                  (job.input as any).model === "gpt-image-2.5"
+                    ? "gpt-image-2.5-flare"
+                    : (job.input as any).model,
+                channelAttempts: attempts,
+              }),
+            },
+          });
+          await tx.auditEvent.create({
+            data: {
+              actorId: "media-worker",
+              actorType: "worker",
+              action: "job.channel_fallback",
+              entityId: id,
+              productId: job.productId,
+              data: json({
+                previousUpstreamId: job.upstreamId,
+                nextChannel: fallback,
+                attempt: attempts.length,
+              }),
+            },
+          });
+          await tx.outbox.create({ data: { jobId: id, phase: "submit" } });
+        });
+        return;
+      }
       if (
         ["succeeded", "completed", "failed", "cancelled"].includes(state) &&
         (job.input as any).usageId

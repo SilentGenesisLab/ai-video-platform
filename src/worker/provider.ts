@@ -53,11 +53,13 @@ export function generationPayload(job: {
   const input = job.input as any;
   const references = input.references ?? [];
   const body: Record<string, unknown> = {
-    model: input.model,
-    channel: input.channel,
+    model: input.fallbackModel ?? input.model,
+    channel: input.fallbackChannel ?? input.channel ?? "auto",
     prompt: input.prompt,
     ...input.parameters,
-    external_ref: job.id,
+    external_ref: input.channelAttempts?.length
+      ? `${job.id}:fallback:${input.channelAttempts.length}`
+      : job.id,
     metadata: { platform_job_id: job.id },
   };
   if (job.kind === "image" || job.kind === "video")
