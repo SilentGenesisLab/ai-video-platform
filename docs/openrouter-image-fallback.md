@@ -11,3 +11,7 @@ USD usage and cost are saved as USD. They are not represented as CNY or settled 
 References: https://openrouter.ai/docs/guides/overview/multimodal/image-generation
 
 Verification: typecheck, build and 60 unit tests passed. The supplied credential was validated using the read-only key endpoint and encrypted into production channel storage. Live generation acceptance is recorded separately below.
+
+Production acceptance (2026-10-16): automatic legacy gpt-image-2.5 task `c516c5cf-3eac-48a6-8334-e0b158a00224` failed on initial routes, switched to OpenRouter Flare and succeeded. OSS file `590e615d-521f-48da-a0e5-700c393408bd` downloaded successfully (1,490,843 bytes) and visually inspected as the requested orange cat. Supplier cost recorded separately as USD 0.005995; CNY accounting remains pending. No credential or signed URL is included in this report.
+
+Sunburst production acceptance: task `ef24a4b9-9e1d-47f5-abd8-d01352270758` succeeded directly on the configured OpenRouter channel. The generated OSS image downloaded successfully (1,434,970 bytes). Both requested model variants have now produced real images; automatic failure-to-Flare fallback was also verified end to end. Web and Worker run the OpenRouter release image; the encrypted credential remains only in the server database.
