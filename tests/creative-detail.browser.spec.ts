@@ -112,7 +112,14 @@ async function fixture(page: Page, viewer = false) {
       result = parts[1] ? concept : { items: [concept], total: 1 };
     else if (["plans", "storyboards", "resources"].includes(parts[0])) {
       const item = resources.find((r) => r.id === parts[1]);
-      if (request.method() === "DELETE" && item) {
+      if (parts[2] === "convert-act" && item) {
+        const input = request.postDataJSON();
+        expect(input.baseVersion).toBe(item.version);
+        expect(item.content.acts.some((a: any) => a.id === input.actId)).toBe(
+          true,
+        );
+        result = { id: "script-created" };
+      } else if (request.method() === "DELETE" && item) {
         item.status = "archived";
         item.version++;
         result = item;
@@ -234,7 +241,7 @@ test("storyboard expands every shot, reorders stable IDs, new routes and respons
 }) => {
   const f = await fixture(page);
   await page.goto("/studio/creative/storyboards/" + boardId);
-  await expect(page.locator(".cd-shot")).toHaveCount(2);
+  await expect(page.locator(".sb-shot")).toHaveCount(2);
   await expect(page.getByLabel("镜头1 · 画面")).toBeVisible();
   await page.getByRole("button", { name: "下移镜头1", exact: true }).click();
   await expect(page.getByLabel("镜头1 · 画面")).toHaveValue(
@@ -247,6 +254,12 @@ test("storyboard expands every shot, reorders stable IDs, new routes and respons
     "shot-a",
   ]);
   expect(f.board.content.shots.map((s: any) => s.number)).toEqual([1, 2]);
+  await page
+    .getByRole("button", { name: "建议分幕（10–20 秒）", exact: true })
+    .click();
+  await expect(page.locator(".sb-act")).toHaveCount(1);
+  await page.getByRole("button", { name: "保存修订", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("已保存新版本");
   for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     expect(
@@ -256,10 +269,16 @@ test("storyboard expands every shot, reorders stable IDs, new routes and respons
     ).toBe(true);
     expect(
       await page
-        .getByLabel("镜头1 · 画面")
-        .evaluate((el) => el.scrollHeight <= el.clientHeight + 2),
+        .locator(".sb-scroll")
+        .evaluate((el) => el.scrollWidth > el.clientWidth),
     ).toBe(true);
   }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole("button", { name: "转为制作脚本", exact: true }).click();
+  await expect(
+    page.getByRole("link", { name: /查看本幕制作脚本/ }),
+  ).toHaveAttribute("href", /script-created/);
+  await page.screenshot({ path: ".runtime/acts-table-desktop.png" });
   await page.goto(
     "/studio/creative/plans/new?productId=" +
       productId +

@@ -1,3 +1,4 @@
+import { actScript } from "@/lib/storyboard-acts";
 import {
   requestPlan,
   authorizePlanBridge,
@@ -308,6 +309,38 @@ async function handle(
           await ownedKey(actor, (result as { id: string }).id);
         return result;
       };
+      if (
+        group === "storyboards" &&
+        id &&
+        action === "convert-act" &&
+        method === "POST"
+      ) {
+        requirePermission(actor, "creative.read");
+        requirePermission(actor, "video.write");
+        await getResource(actor, id);
+        return ok(
+          await create(async (tx) => {
+            const board = await getResource(actor, id, tx);
+            assert(
+              board.kind === "storyboard" && board.version === body.baseVersion,
+              409,
+              "分镜版本已更新，请读取最新版本",
+            );
+            const act = (board.content as any).acts?.find(
+              (a: any) => a.id === body.actId,
+            );
+            assert(act, 422, "请先保存并选择分幕");
+            const plan = await getResource(actor, board.planId!, tx);
+            let input;
+            try {
+              input = actScript(board, act, plan);
+            } catch (e) {
+              throw new HttpError(422, (e as Error).message, "INVALID_ACT");
+            }
+            return saveResource(actor, "script", input, tx);
+          }),
+        );
+      }
       if (group === "auth" && id === "me" && method === "GET") return ok(actor);
       if (
         group === "concepts" &&

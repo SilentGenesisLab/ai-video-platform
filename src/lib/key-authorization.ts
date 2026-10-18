@@ -90,11 +90,13 @@ export async function guardRequest(
     requirePermission(
       a,
       modules[group] +
-        (action === "overview"
-          ? ".generate"
-          : method === "GET"
-            ? ".read"
-            : ".write"),
+        (action === "convert-act"
+          ? ".read"
+          : action === "overview"
+            ? ".generate"
+            : method === "GET"
+              ? ".read"
+              : ".write"),
     );
     return;
   }

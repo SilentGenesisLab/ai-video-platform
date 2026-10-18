@@ -72,7 +72,27 @@ export const contentSchemas: Record<Kind, z.ZodType> = {
     body: text.default(""),
   }),
   storyboard: z
-    .object({ shots: z.array(shotSchema).default([]) })
+    .object({
+      shots: z.array(shotSchema).default([]),
+      acts: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            title: z.string().min(1),
+            objective: text.default(""),
+            shotIds: strings.min(1),
+          }),
+        )
+        .default([]),
+    })
+    .refine(
+      (v) =>
+        !v.acts.length ||
+        (new Set(v.acts.map((a) => a.id)).size === v.acts.length &&
+          v.acts.flatMap((a) => a.shotIds).join("|") ===
+            v.shots.map((s) => s.id).join("|")),
+      "每个镜头须按顺序且仅属于一幕",
+    )
     .refine(
       (v) =>
         new Set(v.shots.map((s) => s.id)).size === v.shots.length &&
@@ -94,6 +114,8 @@ export const contentSchemas: Record<Kind, z.ZodType> = {
   }),
   script: z.object({
     prompt: text.default(""),
+    actId: z.string().optional(),
+    storyboardVersion: z.number().int().positive().optional(),
     shotIds: strings.default([]),
     assets: z.array(sourceSchema).default([]),
     referenceFileIds: strings.default([]),

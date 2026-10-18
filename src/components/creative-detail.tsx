@@ -1,4 +1,5 @@
 "use client";
+import StoryboardTable from "./storyboard-table";
 import {
   useCallback,
   useEffect,
@@ -107,7 +108,9 @@ function AssetThumbnail({ id, version }: { id: string; version: number }) {
     };
   }, [id, version]);
   return asset?.content?.selectedFileId ? (
-    <div className="cd-asset-thumb"><Picture id={asset.content.selectedFileId} /></div>
+    <div className="cd-asset-thumb">
+      <Picture id={asset.content.selectedFileId} />
+    </div>
   ) : null;
 }
 async function collection(path: string) {
@@ -442,7 +445,7 @@ export default function CreativeDetail({
     plan = plans.find((p) => p.id === draft.planId),
     board = boards.find((b) => b.planId === item?.id);
   return (
-    <div className="creative-detail">
+    <div className={"creative-detail" + (isBoard ? " cd-storyboard" : "")}>
       <button className="button" onClick={() => navigate(returnUrl)}>
         <ArrowLeft size={16} />
         返回{isBoard ? "工业分镜" : "策划案"}列表
@@ -781,227 +784,21 @@ export default function CreativeDetail({
             </section>
           </>
         ) : (
-          <>
-            <div className="cd-section">
-              <h2>完整镜头表</h2>
-              <button
-                className="button"
-                onClick={() =>
-                  content("shots", [
-                    ...draft.content.shots,
-                    {
-                      id: crypto.randomUUID(),
-                      number: draft.content.shots.length + 1,
-                      duration: 5,
-                      description: "",
-                      framing: "",
-                      camera: "",
-                      movement: "",
-                      action: "",
-                      dialogue: "",
-                      sound: "",
-                      continuity: "",
-                      assets: [],
-                      candidateFileIds: [],
-                    },
-                  ])
-                }
-              >
-                <Plus size={16} />
-                添加镜头
-              </button>
-            </div>
-            {draft.content.shots.map((s: any, index: number) => (
-              <section className="cd-panel cd-shot" key={s.id}>
-                <div className="cd-section">
-                  <h3>镜头 {String(index + 1).padStart(2, "0")}</h3>
-                  <div className="cd-actions">
-                    <button
-                      className="button"
-                      disabled={index === 0}
-                      aria-label={"上移镜头" + (index + 1)}
-                      onClick={() => {
-                        const a = [...draft.content.shots];
-                        [a[index - 1], a[index]] = [a[index], a[index - 1]];
-                        content("shots", a);
-                      }}
-                    >
-                      <ArrowUp size={16} />
-                    </button>
-                    <button
-                      className="button"
-                      disabled={index === draft.content.shots.length - 1}
-                      aria-label={"下移镜头" + (index + 1)}
-                      onClick={() => {
-                        const a = [...draft.content.shots];
-                        [a[index + 1], a[index]] = [a[index], a[index + 1]];
-                        content("shots", a);
-                      }}
-                    >
-                      <ArrowDown size={16} />
-                    </button>
-                    <button
-                      className="button"
-                      onClick={() => {
-                        if (confirm("移除此镜头？保存后生效。"))
-                          content(
-                            "shots",
-                            draft.content.shots.filter(
-                              (_: any, i: number) => i !== index,
-                            ),
-                          );
-                      }}
-                    >
-                      <Trash2 size={16} />
-                      移除镜头
-                    </button>
-                  </div>
-                </div>
-                <div className="cd-grid">
-                  <label>
-                    镜头{index + 1}时长（秒）
-                    <input
-                      type="number"
-                      min={0.1}
-                      max={300}
-                      step={0.1}
-                      value={s.duration}
-                      onChange={(e) =>
-                        shot(index, "duration", Number(e.target.value))
-                      }
-                    />
-                  </label>
-                  {Object.entries(shotFields).map(([k, label]) => (
-                    <LongText
-                      key={k}
-                      label={"镜头" + (index + 1) + " · " + label}
-                      wide={k === "description"}
-                      value={s[k]}
-                      onChange={(v: string) => shot(index, k, v)}
-                    />
-                  ))}
-                </div>
-                <div className="cd-grid">
-                  <label>
-                    选用分镜图
-                    <select
-                      value={s.imageFileId ?? ""}
-                      onChange={(e) =>
-                        shot(index, "imageFileId", e.target.value)
-                      }
-                    >
-                      <option value="">暂未选择</option>
-                      {files
-                        .filter(
-                          (f) =>
-                            f.status === "ready" && f.mime.startsWith("image/"),
-                        )
-                        .map((f) => (
-                          <option key={f.id} value={f.id}>
-                            {f.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label>
-                    上传候选图
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      onChange={(e) => {
-                        if (e.target.files?.[0])
-                          void upload(index, e.target.files[0]);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
-                </div>
-                <div className="cd-pictures">
-                  {s.imageFileId && <Picture id={s.imageFileId} />}
-                  <div>
-                    {(s.candidateFileIds ?? [])
-                      .filter((fid: string) => fid !== s.imageFileId)
-                      .map((fid: string) => (
-                        <div key={fid}>
-                          <Picture id={fid} />
-                          <button
-                            className="button"
-                            onClick={() => shot(index, "imageFileId", fid)}
-                          >
-                            选用此图
-                          </button>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-                <h4>引用资产（固定版本）</h4>
-                {s.assets?.map((ref: any, i: number) => (
-                  <div className="cd-actions" key={ref.resourceId}>
-                    <AssetThumbnail id={ref.resourceId} version={ref.version} />
-                    <span>
-                      {assets.find((a) => a.id === ref.resourceId)?.title ??
-                        "关联资产"}
-                    </span>
-                    <label>
-                      版本
-                      <input
-                        type="number"
-                        min={1}
-                        value={ref.version}
-                        onChange={(e) =>
-                          shot(
-                            index,
-                            "assets",
-                            s.assets.map((a: any, j: number) =>
-                              i === j
-                                ? { ...a, version: Number(e.target.value) }
-                                : a,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                    <button
-                      className="button"
-                      onClick={() =>
-                        shot(
-                          index,
-                          "assets",
-                          s.assets.filter((_: any, j: number) => j !== i),
-                        )
-                      }
-                    >
-                      移除引用
-                    </button>
-                  </div>
-                ))}
-                <label>
-                  添加资产
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const a = assets.find((a) => a.id === e.target.value);
-                      if (
-                        a &&
-                        !s.assets.some((r: any) => r.resourceId === a.id)
-                      )
-                        shot(index, "assets", [
-                          ...s.assets,
-                          { resourceId: a.id, version: a.version },
-                        ]);
-                    }}
-                  >
-                    <option value="">选择产品资产</option>
-                    {assets.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.title} · V{a.version}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </section>
-            ))}
-          </>
+          <StoryboardTable
+            draft={draft}
+            item={item}
+            dirty={dirty}
+            content={(key: string, value: any) =>
+              key === "__board"
+                ? setDraft((d: any) => ({ ...d, content: value }))
+                : content(key, value)
+            }
+            files={files}
+            assets={assets}
+            upload={upload}
+            Picture={Picture}
+            notify={notify}
+          />
         )}
       </fieldset>
       {item && (

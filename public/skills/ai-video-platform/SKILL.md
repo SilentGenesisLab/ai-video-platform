@@ -2,7 +2,7 @@
 name: ai-video-platform
 description: Manage products, briefs, creative batches, treatments, industrial storyboards, assets and production jobs in AI Video Platform. Use when the user asks to create or iterate video projects on this platform, upload materials, submit media generation, or inspect production results and provenance.
 metadata:
-  version: 1.5.2
+  version: 1.5.3
 ---
 
 # AI Video Platform
@@ -42,6 +42,7 @@ For installation or API updates, compare this package's version with the platfor
 ## Conversation attachments and research
 
 Read `references/assistant.md` for resumable streams, private uploads, video analysis and web search. Analyze only when requested; preserve source citations and timestamp uncertainty.
+
 ## Teams and credits (v1.5.2)
 
 Your API Key is fixed to the team returned by `auth/me`. Browser team switches do not move the Key or an Agent run. Never mix object IDs, files, revisions or task references between teams. Revoked membership immediately removes access. Team administrators do not have platform administration rights.
@@ -53,3 +54,7 @@ Read `/billing/wallet`, `/billing/usage` and `/billing/ledger` to inspect availa
 ## Module permissions (v1.5.2)
 
 Read `references/permissions.md` before operating with a restricted Key. The API checks `permissions` on every request, including idempotent retries; `scopes` are compatibility summaries, never a substitute for module authorization. Editing/generation requires the matching read permission. New production recommendations exclude audit logs and credit queries, so do not call those endpoints unless authorized. Use the free `/billing/quotes` endpoint with the matching generation permission; submitting video generation still requires human approval. API Keys cannot approve, manage members/Keys, change purchase rates or read provider credentials. Stop and report a 403; do not attempt another route to bypass it. Runtime permissions are intersected with current Key and team membership; narrowing or revocation is effective on subsequent requests.
+
+## Act-based video production
+
+Storyboards may include `acts:[{id,title,objective,shotIds}]`. When present, these must partition every shot exactly once in display order. Legacy boards without acts remain readable. Target 10–20 seconds per act; split a long shot manually rather than truncate it. After saving, POST `/api/v1/storyboards/{id}/convert-act` with `{baseVersion,actId}` and Idempotency-Key to create one draft script. This is free business processing, not a generation call. It requires creative.read and video.read/write plus source asset/file access. Scripts retain source storyboard version, shot IDs, selected images and asset versions. Converted video duration must be 4–20 whole seconds. Obtain a quote and human approval via existing video submission flow before generation.
