@@ -18,3 +18,4 @@ backups
 RELEASE_*
 deploy-build.sh
 .pytest_cache
+film-workflow-backup.json

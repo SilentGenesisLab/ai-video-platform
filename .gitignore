@@ -14,3 +14,5 @@ playwright-report/
 *.log
 backups/
 .npm-cache-account/
+# Contains the Film pipeline HMAC signing secret; never commit or share.
+film-workflow-backup.json

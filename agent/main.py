@@ -31,6 +31,7 @@ SYSTEM = """你是 AI 视频制作工作台的创作助手。使用平台工具�
 按需读取产品上下文和已有成果。每次编辑先读取最新版本并传 baseVersion；409 冲突时重新读取并保留人工修改。
 所有文件引用使用平台 fileId，所有资源引用使用 resourceId/version。生成提示词和资产顺序必须一致。
 视频生成只能创建待确认批次，平台会在会话中弹出积分确认框，由人类点击同意后自动生成并在任务卡显示结果；不要让用户另去视频制作页审批，也不要用文字重复询问确认。不能自我批准或声称已经批准。不要绕过权限、读取密钥、执行任意代码或 shell。
+用户要求「给一段产品描述，直接出一条完整成片」时使用 start_film_pipeline（Frameflow Film 流水线，独立于平台批次）。它自动拆分镜、按 10~15 秒分段生成、拼接成一条并用 Suno 配上器乐。**提交本身不花钱**：提交后本会话会出现「成片流水线」卡片，由人点「批准并生成」才开始调用付费模型；你不能代批，也不要在提交后重复询问确认，直接告诉用户点卡片确认。提交后用 film_pipeline_status 报进度，不要循环等待。这条流水线不写平台业务模块，也不走平台的报价与积分。
 生成前先读取 /api/v1/products，使用真实存在且有权限的产品 ID；没有产品且用户明确要求生成普通测试素材时，创建一个名称清晰的测试产品再继续，不猜测或伪造 ID。营销素材没有指定产品时请用户选择或描述产品。
 用户明确要求生成图片时直接执行，不询问渠道、模型、价格或是否确认；使用 generate_media 自动选择已启用渠道并处理报价。视频也使用 generate_media 创建待人工审批批次。图片/视频在聊天任务卡片展示；提交后不再重复提交。普通 platform_request 的媒体生成流程：读取 /api/v1/billing/quotes 的 POST 契约，用完整生产批次请求获取报价（不发起付费调用），取得 quote.id 后，以相同内容附加 quoteId 提交 /api/v1/production-batches。不要绕过报价；PRICE_UNAVAILABLE 时报告具体渠道、型号和规格需要管理员配置，不重复尝试或声称供应商已经失败。视频仍必须人工审批。
 用户只要求策划时不要顺便生成付费媒体。工具结果中的任务状态才是真实状态；异步任务提交后返回平台链接，不循环等待媒体完成。
@@ -48,6 +49,8 @@ TOOLS += [
     {"type":"function","function":{"name":"web_search","description":"Search public web facts with Bocha when current or external evidence is needed. Cite actual returned URLs.","parameters":{"type":"object","properties":{"query":{"type":"string"},"freshness":{"type":"string","enum":["noLimit","oneDay","oneWeek","oneMonth","oneYear"]},"count":{"type":"integer","minimum":1,"maximum":10}},"required":["query"]}}},
     {"type":"function","function":{"name":"read_attachment","description":"Read an authorized attachment in pages. Use nextCursor until the needed section is found.","parameters":{"type":"object","properties":{"fileId":{"type":"string"},"cursor":{"type":"integer","minimum":0}},"required":["fileId"]}}},
     {"type":"function","function":{"name":"analyze_video","description":"Analyze an uploaded video for a new question. Reuses identical requests. Existing analysis is available through read_attachment.","parameters":{"type":"object","properties":{"fileId":{"type":"string"},"question":{"type":"string"}},"required":["fileId","question"]}}},
+    {"type":"function","function":{"name":"start_film_pipeline","description":"Start the Frameflow Film one-shot pipeline: a product description in, a finished scored MP4 out. It splits the description into shots automatically, groups them into 10-15s generation units, and scores the result with Suno. Submitting does NOT spend money: a Feishu approval card is pushed and a human must approve it before any paid model runs.","parameters":{"type":"object","properties":{"brief":{"type":"string","description":"产品描述，8~4000 字，写清产品是什么、卖点、使用场景"},"title":{"type":"string","description":"可选片名"},"product_name":{"type":"string"},"target_seconds":{"type":"integer","minimum":8,"maximum":180,"description":"成片目标时长（秒），默认 40"},"aspect_ratio":{"type":"string","enum":["9:16","16:9","1:1","4:3","3:4"]},"reference_image_urls":{"type":"array","items":{"type":"string"},"description":"产品原图 https 直链，最多 3 张，用于保持产品外观一致"}},"required":["brief"]}}},
+    {"type":"function","function":{"name":"film_pipeline_status","description":"Check progress of a Frameflow Film job started with start_film_pipeline. Reports status, per-unit progress and the finished film URL.","parameters":{"type":"object","properties":{"job_id":{"type":"string"}},"required":["job_id"]}}},
 ]
 
 
@@ -158,7 +161,7 @@ async def execute_run(client: httpx.AsyncClient, run: dict, saver):
             if stopped.is_set():
                 return {"paused": True, "messages": messages, "tool_index": index, "pending_tools": True}
             fn = call["function"]["name"]
-            await event("tool_start", tool=fn, text={"web_search":"正在搜索资料", "read_attachment":"正在读取附件", "analyze_video":"正在分析视频"}.get(fn, "正在处理平台资料"))
+            await event("tool_start", tool=fn, text={"web_search":"正在搜索资料", "read_attachment":"正在读取附件", "analyze_video":"正在分析视频", "start_film_pipeline":"正在提交出片流水线", "film_pipeline_status":"正在查询出片进度"}.get(fn, "正在处理平台资料"))
             try:
                 args = json.loads(call["function"]["arguments"])
                 identity = hashlib.sha256((run["id"] + ":" + call["id"]).encode()).hexdigest()
@@ -192,6 +195,23 @@ async def execute_run(client: httpx.AsyncClient, run: dict, saver):
                     result = next(a for a in current.json()["items"] if a["id"] == created["id"])
                     if result["status"] in ("queued", "running", "submitting"):
                         return {"messages": messages, "tool_index": index, "pending_tools": True, "waiting_jobs": [result["jobId"]]}
+                elif fn == "start_film_pipeline":
+                    payload = {k: v for k, v in args.items() if v not in (None, "", [])}
+                    payload["conversationId"] = run["conversationId"]
+                    response = await client.post(
+                        BASE + "/api/v1/film-jobs",
+                        headers=headers,
+                        json=payload,
+                        timeout=90,
+                    )
+                    result = {"status": response.status_code, "data": response.json()}
+                elif fn == "film_pipeline_status":
+                    response = await client.get(
+                        BASE + "/api/v1/film-jobs/" + str(args["job_id"]),
+                        headers=headers,
+                        timeout=60,
+                    )
+                    result = {"status": response.status_code, "data": response.json()}
                 else:
                     raise ValueError("Unknown tool")
             except Exception as exc:

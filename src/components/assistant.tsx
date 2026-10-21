@@ -1029,11 +1029,31 @@ function AssistantPanel({
           >
             <b>{batch.title}</b>
             <small>
-              {batch.kind === "video" ? "视频" : "图片"} ·{" "}
-              {states[batch.status] ?? batch.status}
+              {batch.kind === "video"
+                ? "视频"
+                : batch.kind === "film"
+                  ? "成片流水线"
+                  : "图片"}{" "}
+              · {states[batch.status] ?? batch.status}
             </small>
             {batch.status === "pending_approval" &&
-              (batch.canConfirm ? (
+              (batch.kind === "film" ? (
+                batch.canConfirm ? (
+                  <button
+                    className="button primary"
+                    onClick={() => {
+                      void api(`/film-jobs/${batch.id}/approve`, "POST", {})
+                        .then(() => api(`/conversations/${id}/media`))
+                        .then((r) => updateMedia(r.items))
+                        .catch((e) => setNotice((e as Error).message));
+                    }}
+                  >
+                    批准并生成
+                  </button>
+                ) : (
+                  <span>等待发起人确认生成</span>
+                )
+              ) : batch.canConfirm ? (
                 <button
                   className="button primary"
                   onClick={() => {

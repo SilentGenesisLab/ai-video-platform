@@ -22,6 +22,8 @@ import { roles } from "@/lib/auth";
 import { isUnscored } from "@/lib/concept-scoring";
 import { adminRoute } from "@/lib/platform-admin";
 import { meteredStream } from "@/lib/metered-stream";
+import { assembleFilm, parseAssembleInput } from "@/lib/film-media";
+import { postFilm, parsePostInput } from "@/lib/film-post";
 import { meteredCall } from "@/lib/metering";
 import { personalRoute } from "@/lib/personal";
 import { billingRoute } from "@/lib/billing";
@@ -68,6 +70,7 @@ import {
   saveKey,
   saveResource,
   deleteResource,
+  type Tx,
 } from "@/lib/services";
 import { roleInput, routes } from "@/lib/contracts";
 import {
@@ -84,6 +87,11 @@ import {
   decideBatch,
   refreshVideoQuote,
 } from "@/lib/production";
+import {
+  approveFilmJob,
+  createFilmJob,
+  filmJobStatus,
+} from "@/lib/film-pipeline";
 import {
   claimRun,
   controlRun,
@@ -126,7 +134,7 @@ async function handle(
     if (group === "openapi.json" && method === "GET") return ok(openapi());
     if (group === "health" && method === "GET") {
       await db.$queryRaw`SELECT 1`;
-      return ok({ status: "ok", version: "1.5.2" });
+      return ok({ status: "ok", version: "1.5.4" });
     }
     if (group === "auth") {
       const response = await accountRoute(req, id, body);
@@ -168,6 +176,10 @@ async function handle(
             _count: true,
           }),
         });
+      if (id === "film-assemble" && method === "POST")
+        return ok(await assembleFilm(parseAssembleInput(body)));
+      if (id === "film-post" && method === "POST")
+        return ok(await postFilm(parsePostInput(body)));
       if (id === "agent-model" && method === "POST") {
         const runReq = new NextRequest(req.url, {
           headers: {
@@ -783,6 +795,18 @@ async function handle(
           );
           return ok({ items: visible.filter(Boolean) });
         }
+      }
+      if (group === "film-jobs") {
+        if (!id && method === "POST")
+          return ok(await create((tx) => createFilmJob(actor, body, tx)), 201);
+        // 审批必须走人类会话：approveFilmJob 内部 requireHuman，Agent Key 会被 403。
+        if (id && action === "approve" && method === "POST")
+          return ok(await db.$transaction((tx) => approveFilmJob(actor, id, tx)));
+        // 只读状态：直接读库 + 读 n8n，不占事务。
+        if (id && !action && method === "GET")
+          return ok(
+            await filmJobStatus(actor, id, db as unknown as Tx),
+          );
       }
       if (group === "approvals" && id && method === "POST")
         return ok(await decideBatch(actor, id, body));

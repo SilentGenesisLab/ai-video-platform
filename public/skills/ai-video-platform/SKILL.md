@@ -2,7 +2,7 @@
 name: ai-video-platform
 description: Manage products, briefs, creative batches, treatments, industrial storyboards, assets and production jobs in AI Video Platform. Use when the user asks to create or iterate video projects on this platform, upload materials, submit media generation, or inspect production results and provenance.
 metadata:
-  version: 1.5.3
+  version: 1.5.4
 ---
 
 # AI Video Platform
