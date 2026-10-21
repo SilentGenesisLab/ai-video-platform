@@ -367,6 +367,42 @@ export function openapi() {
       "Build deterministic contact sheets from selected shot images",
       {},
     ],
+    [
+      "/film-jobs",
+      "post",
+      "Start the Frameflow Film pipeline: brief to storyboard to segmented generation and an assembled scored film; submitting does not spend credits until a human approves",
+      {
+        type: "object",
+        required: ["brief"],
+        properties: {
+          brief: { type: "string", minLength: 8, maxLength: 4000 },
+          title: { type: "string", maxLength: 80 },
+          product_name: { type: "string", maxLength: 80 },
+          target_seconds: { type: "integer", minimum: 8, maximum: 180 },
+          aspect_ratio: {
+            type: "string",
+            enum: ["9:16", "16:9", "1:1", "4:3", "3:4"],
+          },
+          reference_image_urls: {
+            type: "array",
+            maxItems: 3,
+            items: { type: "string", format: "uri" },
+          },
+          conversationId: { type: "string", format: "uuid" },
+        },
+      },
+    ],
+    [
+      "/film-jobs/{id}",
+      "get",
+      "Film pipeline status, per-unit progress and the delivered film URL",
+    ],
+    [
+      "/film-jobs/{id}/approve",
+      "post",
+      "Human-only confirmation that starts paid generation; API keys are rejected",
+      {},
+    ],
     ["/conversations", "get", "List conversations"],
     [
       "/conversations",
@@ -885,7 +921,7 @@ export function openapi() {
     openapi: "3.1.0",
     info: {
       title: "AI Video Platform",
-      version: "1.5.3",
+      version: "1.5.4",
       description:
         "All create operations require Idempotency-Key. Revisions require baseVersion. Human approval is never granted to an API key. API Keys enforce module permissions and explicit productScopeMode (all includes future team products, selected requires productIds). Legacy scopes remain summaries, and incompatible legacy authorization edits return 409. API Keys are bound to one team; sessions select the current team. Objects and files are team scoped and use product or private conversation access. Generation requires an unexpired quoteId; price changes invalidate approval. Industrial storyboards belong to plans.",
     },

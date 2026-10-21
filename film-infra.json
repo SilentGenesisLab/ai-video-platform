@@ -1,0 +1,13 @@
+{
+ "tables": {
+  "frameflow_film_jobs": "tJe6uFcUL86pJQge",
+  "frameflow_film_units": "wcaSSN5CjdfwPniO",
+  "frameflow_film_heartbeat": "PvwSYBQ1dTcBpTJS"
+ },
+ "credentials": {
+  "aicentre": "1RrwotauGwqfzjvZ",
+  "deepseek": "ryQGXDOJ2ssVOayg",
+  "platform": "HQG7tQF4OlJzmYOk",
+  "order": "afTqMw0XKLRkbAqk"
+ }
+}

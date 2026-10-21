@@ -1,4 +1,5 @@
 import { consentDetails } from "./video-consent";
+import { filmConsentItem, filmConfigured } from "./film-pipeline";
 import {
   requirePermission,
   permissionsOf,
@@ -37,8 +38,7 @@ export async function conversationMedia(actor: Actor, id: string, tx: Tx = db) {
   });
   const visible = [];
   for (const b of batches) if (await canReadBatch(actor, b)) visible.push(b);
-  return {
-    items: await Promise.all(
+  const batchItems = await Promise.all(
       visible.map(async (b) => ({
         ...(await consentDetails(actor, b, tx)),
         id: b.id,
@@ -76,8 +76,19 @@ export async function conversationMedia(actor: Actor, id: string, tx: Tx = db) {
           })),
         ),
       })),
-    ),
-  };
+  );
+  const films = filmConfigured()
+    ? await Promise.all(
+        (
+          await tx.job.findMany({
+            where: { conversationId: id, kind: "film_pipeline" },
+            orderBy: { createdAt: "asc" },
+            take: 20,
+          })
+        ).map((j) => filmConsentItem(actor, j)),
+      )
+    : [];
+  return { items: [...batchItems, ...films] };
 }
 export async function conversationSnapshot(actor: Actor, id: string) {
   return db.$transaction(async (tx) => {

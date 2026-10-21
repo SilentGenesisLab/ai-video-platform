@@ -1,0 +1,14 @@
+{
+ "ids": {
+  "unit": "EQcEl47fXrGjXnXI",
+  "assembly": "O3rL8vWOoXzt4Kgm",
+  "orchestrator": "tgXgZ6J0GkCTFUgt",
+  "approve": "ldnnROQ2jc8P6Cvu",
+  "status": "3govhTSldSVvuGPx",
+  "order": "eCRXrC3jz16gi0zW",
+  "cron": "Fljmw4NrummzLsK7"
+ },
+ "orderPath": "frameflow-film/v1/order",
+ "statusPath": "frameflow-film/v1/status",
+ "approvePath": "frameflow-film/v1/approve"
+}
