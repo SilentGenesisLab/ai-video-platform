@@ -24,7 +24,7 @@ export const permissionGroups = [
     actions: [
       ["read", "查看资产"],
       ["write", "编辑资产"],
-      ["generate", "生成图片与音乐"],
+      ["generate", "提交图片与音乐生成"],
     ],
   },
   {
@@ -33,7 +33,7 @@ export const permissionGroups = [
     actions: [
       ["read", "查看制作脚本与成片"],
       ["write", "编辑制作脚本与成片"],
-      ["generate", "提交视频生成审批"],
+      ["generate", "提交视频制作批次（待人工审批）"],
     ],
   },
   {
@@ -41,7 +41,7 @@ export const permissionGroups = [
     label: "文件资料",
     actions: [
       ["read", "查看与下载文件"],
-      ["write", "上传与管理文件"],
+      ["write", "上传、删除与管理文件"],
       ["analyze", "解析与识别文件"],
     ],
   },

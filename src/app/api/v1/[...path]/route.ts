@@ -1,3 +1,4 @@
+import { deleteFile } from "@/lib/storage";
 import { actScript } from "@/lib/storyboard-acts";
 import {
   requestPlan,
@@ -575,6 +576,8 @@ async function handle(
         if (method === "POST" && !id)
           return ok(await create((tx) => initiateUpload(actor, body, tx)), 201);
         if (id) {
+          if (method === "DELETE" && !action)
+            return ok(await deleteFile(actor, id));
           const file = await fileAccess(actor, id);
           if (method === "GET" && action === "content")
             return ok(
@@ -686,7 +689,10 @@ async function handle(
           if (method === "GET")
             return ok({
               ...file,
-              url: file.status === "ready" ? readUrl(file.key) : null,
+              url:
+                ["ready", "deleted"].includes(file.status) && file.sha256
+                  ? readUrl(file.key)
+                  : null,
             });
         } else if (method === "GET") {
           const productId = url.searchParams.get("productId");
@@ -703,6 +709,7 @@ async function handle(
             ),
           );
           const where = {
+            status: { not: "deleted" },
             ...(await scopedFilter(actor)),
             ...(url.searchParams.get("conversationId")
               ? { conversationId: url.searchParams.get("conversationId")! }

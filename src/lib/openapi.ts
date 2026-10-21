@@ -291,6 +291,11 @@ export function openapi() {
     ["/files", "post", "Prepare signed upload", z.toJSONSchema(uploadSchema)],
     ["/files/{id}", "get", "File metadata and expiring read URL"],
     [
+      "/files/{id}",
+      "delete",
+      "Logical delete (file.read + file.write). Retains OSS/history; hides from file list. Active tasks return 409. Repeated deletion is safe.",
+    ],
+    [
       "/files/{id}/complete",
       "post",
       "Validate uploaded file; schedule parsing unless parsePolicy is skip",

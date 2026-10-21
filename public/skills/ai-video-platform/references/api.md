@@ -98,3 +98,9 @@ Reference search defaults to 50 TVC results. Pass automatic:true to initiate onl
 ### Convert a storyboard act
 
 POST `/storyboards/{id}/convert-act` with `{baseVersion: 3, actId: "stable-act-id"}` and `Idempotency-Key`. Returns one draft script. Same key replays the result; reuse with changed input returns 409. Changed board version returns 409. No generation, approval or wallet freeze occurs. Save acts before conversion.
+
+
+### 文件增删与提交权限
+POST /api/v1/files 创建上传记录，上传后 POST /files/{id}/complete。
+DELETE /api/v1/files/{id} 需要 file.read + file.write；逻辑删除，保留 OSS 和历史，列表不再展示。当前资源引用或活动任务使用时返回 409 FILE_IN_USE，先解除关联并保存。pending 空壳可直接删除；重复删除安全。
+提交视频批次 POST /production-batches 需要 video.read + video.generate，读取产品、策划案和参考文件另需对应 read 权限；Key 不能审批。报价不需要 operations.billing。提交图片/音乐需要 asset.generate（分镜图 creative.generate）。403 KEY_PERMISSION 表示缺少模块授权，应由密钥管理者编辑授权，不能自行审批。

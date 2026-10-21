@@ -235,3 +235,53 @@ export async function persistBuffer(
     },
   });
 }
+
+// Logical deletion preserves OSS objects and immutable revision references.
+export async function deleteFile(actor: Actor, id: string) {
+  requireScope(actor, "write");
+  const { requirePermission } = await import("./permissions");
+  requirePermission(actor, "file.write");
+  return db.$transaction(async (tx) => {
+    const file = await fileAccess(actor, id, tx);
+    if (file.status === "deleted") return { id, status: "deleted" };
+    const resources = await tx.resource.findMany({
+      where: { teamId: actor.teamId, status: { not: "archived" } },
+      select: { content: true },
+    });
+    assert(
+      !resources.some((r) => JSON.stringify(r.content).includes(id)),
+      409,
+      "文件仍关联产品或资产，请先移除关联并保存",
+      "FILE_IN_USE",
+    );
+    const jobs = await tx.job.findMany({
+      where: {
+        teamId: actor.teamId,
+        status: {
+          in: [
+            "queued",
+            "running",
+            "submitting",
+            "submitted",
+            "polling",
+            "storing",
+            "submission_unknown",
+          ],
+        },
+      },
+      select: { input: true },
+    });
+    assert(
+      !jobs.some((job) => JSON.stringify(job.input).includes(id)),
+      409,
+      "文件仍被未结束的任务使用，请先处理任务",
+      "FILE_IN_USE",
+    );
+    await tx.fileObject.update({ where: { id }, data: { status: "deleted" } });
+    await audit(tx, actor, "file.deleted", id, file.productId, {
+      previousStatus: file.status,
+      retainedObject: true,
+    });
+    return { id, status: "deleted" };
+  });
+}

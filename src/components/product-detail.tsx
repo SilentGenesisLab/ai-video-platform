@@ -1918,7 +1918,7 @@ export default function ProductDetail({
             {files
               .filter(
                 (f) =>
-                  f.status === "ready" &&
+                  ["ready", "pending"].includes(f.status) &&
                   (picker !== "reference" || f.mime.startsWith("video/")),
               )
               .map((f) => (
@@ -1931,16 +1931,41 @@ export default function ProductDetail({
                   <span>{f.name}</span>
                   <button
                     className="button"
-                    disabled={(picker === "reference"
-                      ? content.referenceVideos
-                      : content.materials
-                    ).some((x: any) => x.fileId === f.id)}
+                    disabled={
+                      f.status !== "ready" ||
+                      (picker === "reference"
+                        ? content.referenceVideos
+                        : content.materials
+                      ).some((x: any) => x.fileId === f.id)
+                    }
                     onClick={() =>
                       attach(f, picker === "reference", uploadCategory)
                     }
                   >
                     加入{picker === "reference" ? "参考" : "资料"}
                   </button>
+                  {!readOnly && (
+                    <button
+                      className="button"
+                      onClick={async () => {
+                        if (
+                          !window.confirm(
+                            "删除此文件记录？历史引用和 OSS 原文件会保留。已关联的资料请先移除并保存。",
+                          )
+                        )
+                          return;
+                        try {
+                          await api("/files/" + f.id, "DELETE");
+                          await loadFiles();
+                          notify("文件记录已删除", "success");
+                        } catch (e) {
+                          notify((e as Error).message);
+                        }
+                      }}
+                    >
+                      删除文件
+                    </button>
+                  )}
                 </div>
               ))}
             {!files.some(
